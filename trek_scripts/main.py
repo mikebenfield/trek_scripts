@@ -220,6 +220,29 @@ def arg_hallucinate(args):
     s = learn.hallucinate(model, args.hidden_size, args.max_len, rand)
     print(s)
 
+def train_test_split(rand, data_directory, shows, test_proportion):
+    '''Returns (train_episodes, test_episodes).
+    
+    These are paths relative to the data directory.
+    '''
+    episodes = []
+    for show in shows:
+        for child in pathlib.Path(data_directory, show).iterdir():
+            if child.suffix == '.txt':
+                episodes.append(pathlib.Path(*child.parts[-2:]))
+    test_size = int(test_proportion * len(episodes))
+    test_episodes, train_episodes = select_from_list(rand, episodes, test_size)
+    return test_episodes, train_episodes
+    
+def batch_iter(rand, batch_size, lst):
+    visited = []
+    not_visited = lst
+    use = []
+    while not_visited:
+        visited += use
+        (use, not_visited) = select_from_list(rand, not_visited, batch_size)
+        yield use
+
 def arg_train(args):
     import torch
     import torch.nn as nn
@@ -232,57 +255,67 @@ def arg_train(args):
 
     opts.cuda = args.cuda
 
-    shows = args.shows.split(',')
-    shows = [show.strip() for show in shows]
-    episodes = []
-    for show in shows:
-        for child in pathlib.Path(args.directory, show).iterdir():
-            if child.suffix == '.txt':
-                episodes.append(child)
-
     rand = random.RandomState(args.seed)
-    test_size = int(args.test_size * len(episodes))
-    test_episodes, train_episodes = select_from_list(rand, episodes, test_size)
-    del episodes
 
     if args.model:
-        model = torch.load(args.model)
+        dict_ = torch.load(args.model)
+        hidden_size = dict_['hidden_size']
+        test_episodes = dict_['test_episodes']
+        train_episodes = dict_['train_episodes']
+        model = learn.CharRnn(91, hidden_size=hidden_size)
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        model.load_state_dict(dict_['model'])
+        optimizer.load_state_dict(dict_['optimizer'])
+        del dict_
     else:
-        model = learn.CharRnn(91, hidden_size=args.hidden_size)
+        shows = args.shows.split(',')
+        shows = [show.strip() for show in shows]
+        test_episodes, train_episodes = train_test_split(
+            rand, 
+            args.directory,
+            shows,
+            args.test_size)
+        hidden_size = args.hidden_size
+        model = learn.CharRnn(91, hidden_size)
+        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+
     if opts.cuda:
         model.cuda()
 
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     loss_f = nn.NLLLoss()
 
-    visited_train_episodes = train_episodes
+    train_paths = [pathlib.Path(args.directory, ep) for ep in train_episodes]
+    test_paths = [pathlib.Path(args.directory, ep) for ep in test_episodes]
     for epoch in range(args.epochs):
         print('beginning epoch {}'.format(epoch))
-        train_episodes = visited_train_episodes
-        visited_train_episodes = []
+
         total_train_loss = 0
-
-        while train_episodes:
-            # one batch
-
-            (use_episodes, train_episodes) \
-                = select_from_list(rand, train_episodes, args.batch_size)
-            print('size {}, {}'.format(len(use_episodes), len(train_episodes)))
-            strings = []
-            for ep in use_episodes:
-                with open(ep) as f:
-                    strings.append(f.read())
-            loss = learn.train(model, args.hidden_size, loss_f, optimizer,
+        for train_batch in batch_iter(rand, args.batch_size, train_paths):
+            strings = [open(ep).read() for ep in train_batch]
+            loss = learn.train(model, hidden_size, loss_f, optimizer,
                                args.chunk_size, strings)
             total_train_loss += len(strings) * loss
-            visited_train_episodes += use_episodes
-            break
 
-        average_loss = total_train_loss / len(visited_train_episodes)
+        average_loss = total_train_loss / len(train_episodes)
         print('average training loss for epoch {}: {}'.format(epoch, average_loss))
         print('saving model for epoch {}'.format(epoch))
         path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
-        torch.save(model, path)
+
+        total_test_loss = 0
+        for test_batch in batch_iter(rand, args.batch_size, test_paths):
+            strings = [open(ep).read() for ep in test_batch]
+            loss = learn.test(model, hidden_size, loss_f, strings)
+            total_test_loss += len(strings) * loss
+        average_loss = total_test_loss / len(test_episodes)
+        print('average test loss for epoch {}: {}'.format(epoch, average_loss))
+
+        torch.save({
+            'test_episodes': test_episodes,
+            'train_episodes': train_episodes,
+            'hidden_size': hidden_size,
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+        }, path)
 
     print('Done')
             
@@ -327,10 +360,6 @@ def main():
     )
     train_parser.add_argument(
         '--cuda', action='store_true',
-    )
-    train_parser.add_argument(
-        '--dropout', type=float,
-        help='Amount of dropout to use (in [0, 1])'
     )
     train_parser.add_argument(
         '--test_size', type=float, required=True,

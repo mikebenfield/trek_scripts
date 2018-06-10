@@ -111,11 +111,11 @@ def hallucinate(model, hidden_size, max_len, rand):
     return ''.join(output)
 
 def test(model, hidden_size, loss_f, strings):
-    onehot, encoded_strings = encode_strings(chunk_size, strings)
+    onehot, encoded_strings = encode_strings(1, strings)
     max_len, count = encoded_strings.size()
     del strings
 
-    print('Test strings encoded')
+    # print('Test strings encoded')
 
     model.eval()
 
@@ -124,18 +124,18 @@ def test(model, hidden_size, loss_f, strings):
         last_hidden = last_hidden.cuda()
 
     total_loss = 0
-    for i in range(0, encoded_strings.size()[0] - 1):
-        output, last_hidden = model(onehot[j, :, :], last_hidden)
-        total_loss += loss_f(output, encoded_strings[j+1])
+    for i in range(0, max_len - 1):
+        output, last_hidden = model(onehot[i, :, :], last_hidden)
+        total_loss += loss_f(output, encoded_strings[i+1]).item()
 
-    return total_loss
+    return total_loss / (max_len - 1)
 
 def train(model, hidden_size, loss_f, optimizer, chunk_size, strings):
     onehot, encoded_strings = encode_strings(chunk_size, strings)
     max_len, count = encoded_strings.size()
     del strings
 
-    print('Strings encoded')
+    # print('Strings encoded')
 
     model.train()
 
@@ -156,8 +156,7 @@ def train(model, hidden_size, loss_f, optimizer, chunk_size, strings):
             loss = loss.clone()
             new_loss = loss_f(output, encoded_strings[j+1])
             loss += new_loss
-            print('found loss ', new_loss.data[0])
-        total_loss += loss.data[0]
+        total_loss += loss.item()
         loss.backward()
         optimizer.step()
     return total_loss / (max_len - 1)
