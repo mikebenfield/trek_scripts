@@ -194,10 +194,98 @@ def arg_download(args):
 
 def arg_strip(args):
     for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
-    # for name in ["DS9"]:
         path = pathlib.PurePath(args.dir, name)
         strip_html(path)
 
+def select_from_list(rand, lst, count):
+    if count >= len(lst):
+        return (lst, [])
+    indices = rand.choice(len(lst), size=count, replace=False)
+    indices = set(indices)
+    selected = []
+    others = []
+    for i, item in enumerate(lst):
+        if i in indices:
+            selected.append(item)
+        else:
+            others.append(item)
+    return (selected, others)
+
+def arg_hallucinate(args):
+    import torch
+    import numpy.random as random
+    import trek_scripts.learn as learn
+    rand = random.RandomState(args.seed)
+    model = torch.load(args.model, map_location=lambda storage, loc: storage)
+    s = learn.hallucinate(model, args.hidden_size, args.max_len, rand)
+    print(s)
+
+def arg_train(args):
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+
+    import numpy.random as random
+
+    from trek_scripts import learn
+    from trek_scripts import opts
+
+    opts.cuda = args.cuda
+
+    shows = args.shows.split(',')
+    shows = [show.strip() for show in shows]
+    episodes = []
+    for show in shows:
+        for child in pathlib.Path(args.directory, show).iterdir():
+            if child.suffix == '.txt':
+                episodes.append(child)
+
+    rand = random.RandomState(args.seed)
+    test_size = int(args.test_size * len(episodes))
+    test_episodes, train_episodes = select_from_list(rand, episodes, test_size)
+    del episodes
+
+    if args.model:
+        model = torch.load(args.model)
+    else:
+        model = learn.CharRnn(91, hidden_size=args.hidden_size)
+    if opts.cuda:
+        model.cuda()
+
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    loss_f = nn.NLLLoss()
+
+    visited_train_episodes = train_episodes
+    for epoch in range(args.epochs):
+        print('beginning epoch {}'.format(epoch))
+        train_episodes = visited_train_episodes
+        visited_train_episodes = []
+        total_train_loss = 0
+
+        while train_episodes:
+            # one batch
+
+            (use_episodes, train_episodes) \
+                = select_from_list(rand, train_episodes, args.batch_size)
+            print('size {}, {}'.format(len(use_episodes), len(train_episodes)))
+            strings = []
+            for ep in use_episodes:
+                with open(ep) as f:
+                    strings.append(f.read())
+            loss = learn.train(model, args.hidden_size, loss_f, optimizer,
+                               args.chunk_size, strings)
+            total_train_loss += len(strings) * loss
+            visited_train_episodes += use_episodes
+            break
+
+        average_loss = total_train_loss / len(visited_train_episodes)
+        print('average training loss for epoch {}: {}'.format(epoch, average_loss))
+        print('saving model for epoch {}'.format(epoch))
+        path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
+        torch.save(model, path)
+
+    print('Done')
+            
 def main():
     parser = argparse.ArgumentParser(description='Generate some scripts')
 
@@ -211,6 +299,76 @@ def main():
     strip_parser = subparsers.add_parser('strip')
     strip_parser.add_argument('--directory', dest='dir', required=True)
     strip_parser.set_defaults(func=arg_strip)
+
+    train_parser = subparsers.add_parser('train')
+    train_parser.add_argument(
+        '--directory', required=True,
+        help='Data directory containing transcript directories'
+    )
+    train_parser.add_argument(
+        '--model_directory', required=True,
+        help='Directory in which to save models'
+    )
+    train_parser.add_argument(
+        '--model', required=False,
+        help='Saved model file to begin training with'
+    )
+    train_parser.add_argument(
+        '--shows',
+        default='TOS,TNG,DS9,VOY,ENT',
+        help='Comma separated list of series to train on'
+    )
+    train_parser.add_argument(
+        '--hidden_size', type=int, default=128,
+        help='Size of the hidden layer in the GRU cell'
+    )
+    train_parser.add_argument(
+        '--chunk_size', required=True, type=int,
+    )
+    train_parser.add_argument(
+        '--cuda', action='store_true',
+    )
+    train_parser.add_argument(
+        '--dropout', type=float,
+        help='Amount of dropout to use (in [0, 1])'
+    )
+    train_parser.add_argument(
+        '--test_size', type=float, required=True,
+        help='Proportion of transcripts to use for testing'
+    )
+    train_parser.add_argument(
+        '--batch_size', type=int, default=10,
+    )
+    train_parser.add_argument(
+        '--epochs', type=int, required=True,
+        help='Number of training epochs'
+    )
+    train_parser.add_argument(
+        '--seed', type=int,
+        help='Random number seed'
+    )
+    train_parser.add_argument(
+        '--learning_rate', type=float, default=0.001,
+        help='Learning rate for Adam optimizer'
+    )
+    train_parser.set_defaults(func=arg_train)
+
+    hallucinate_parser = subparsers.add_parser('hallucinate')
+    hallucinate_parser.add_argument(
+        '--model', required=True,
+        help='Saved model file to use'
+    )
+    hallucinate_parser.add_argument(
+        '--hidden_size', required=True, type=int,
+    )
+    hallucinate_parser.add_argument(
+        '--max_len', required=True, type=int,
+    )
+    hallucinate_parser.add_argument(
+        '--seed', type=int,
+        help='Random number seed'
+    )
+    hallucinate_parser.set_defaults(func=arg_hallucinate)
 
     args = parser.parse_args()
     args.func(args)
