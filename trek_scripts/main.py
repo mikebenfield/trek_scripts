@@ -291,6 +291,7 @@ def arg_train(args):
 
         total_train_loss = 0
         for train_batch in batch_iter(rand, args.batch_size, train_paths):
+            print('batch')
             strings = [open(ep).read() for ep in train_batch]
             loss = learn.train(model, hidden_size, loss_f, optimizer,
                                args.chunk_size, strings)
@@ -320,6 +321,7 @@ def arg_train(args):
     print('Done')
             
 def main():
+    print(-1)
     parser = argparse.ArgumentParser(description='Generate some scripts')
 
     subparsers = parser.add_subparsers()
@@ -399,5 +401,7 @@ def main():
     )
     hallucinate_parser.set_defaults(func=arg_hallucinate)
 
+    print(-2)
     args = parser.parse_args()
+    print(-3)
     args.func(args)
