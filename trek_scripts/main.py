@@ -216,8 +216,12 @@ def arg_hallucinate(args):
     import numpy.random as random
     import trek_scripts.learn as learn
     rand = random.RandomState(args.seed)
-    model = torch.load(args.model, map_location=lambda storage, loc: storage)
-    s = learn.hallucinate(model, args.hidden_size, args.max_len, rand)
+    dict_ = torch.load(args.model)
+    hidden_size = dict_['hidden_size']
+    layer_size = dict_['layer_size']
+    model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
+    model.load_state_dict(dict_['model'])
+    s = learn.hallucinate(model, hidden_size, args.max_len, rand)
     print(s)
 
 def train_test_split(rand, data_directory, shows, test_proportion):
@@ -260,12 +264,18 @@ def arg_train(args):
     if args.model:
         dict_ = torch.load(args.model)
         hidden_size = dict_['hidden_size']
+        layer_size = dict_['layer_size']
         test_episodes = dict_['test_episodes']
         train_episodes = dict_['train_episodes']
-        model = learn.CharRnn(91, hidden_size=hidden_size)
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
+        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
         model.load_state_dict(dict_['model'])
         optimizer.load_state_dict(dict_['optimizer'])
+        if opts.cuda:
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if torch.is_tensor(v):
+                        state[k] = v.cuda()
         del dict_
     else:
         shows = args.shows.split(',')
@@ -276,7 +286,8 @@ def arg_train(args):
             shows,
             args.test_size)
         hidden_size = args.hidden_size
-        model = learn.CharRnn(91, hidden_size)
+        layer_size = args.layer_size
+        model = learn.CharRnn(91, hidden_size, layer_size)
         optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
     if opts.cuda:
@@ -291,6 +302,7 @@ def arg_train(args):
 
         total_train_loss = 0
         for train_batch in batch_iter(rand, args.batch_size, train_paths):
+            print('batch')
             strings = [open(ep).read() for ep in train_batch]
             loss = learn.train(model, hidden_size, loss_f, optimizer,
                                args.chunk_size, strings)
@@ -313,6 +325,7 @@ def arg_train(args):
             'test_episodes': test_episodes,
             'train_episodes': train_episodes,
             'hidden_size': hidden_size,
+            'layer_size': layer_size,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, path)
@@ -356,6 +369,10 @@ def main():
         help='Size of the hidden layer in the GRU cell'
     )
     train_parser.add_argument(
+        '--layer_size', type=int, default=128,
+        help='Size of the layer in the GRU cell'
+    )
+    train_parser.add_argument(
         '--chunk_size', required=True, type=int,
     )
     train_parser.add_argument(
@@ -386,9 +403,6 @@ def main():
     hallucinate_parser.add_argument(
         '--model', required=True,
         help='Saved model file to use'
-    )
-    hallucinate_parser.add_argument(
-        '--hidden_size', required=True, type=int,
     )
     hallucinate_parser.add_argument(
         '--max_len', required=True, type=int,

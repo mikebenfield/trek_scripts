@@ -8,14 +8,18 @@ import torch.nn.functional as F
 import trek_scripts.opts as opts
 
 class CharRnn(nn.Module):
-    def __init__(self, io_size, hidden_size):
+    def __init__(self, io_size, hidden_size, layer_size):
         super().__init__()
         self.io_size = io_size
         self.gru = nn.GRUCell(io_size, hidden_size)
-        self.linear = nn.Linear(hidden_size, io_size)
+        self.linear1 = nn.Linear(hidden_size, layer_size)
+        self.linear2 = nn.Linear(layer_size, io_size)
 
     def forward(self, x, hidden):
         hidden = self.gru(x, hidden)
+        x = self.linear1(hidden)
+        x = F.relu(x)
+        x = self.linear2(x)
         x = F.log_softmax(x, dim=1)
         return (x, hidden)
 
@@ -125,6 +129,7 @@ def test(model, hidden_size, loss_f, strings):
 
     total_loss = 0
     for i in range(0, max_len - 1):
+        last_hidden.detach_()
         output, last_hidden = model(onehot[i, :, :], last_hidden)
         total_loss += loss_f(output, encoded_strings[i+1]).item()
 
