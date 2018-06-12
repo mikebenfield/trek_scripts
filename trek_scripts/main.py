@@ -220,7 +220,7 @@ def arg_hallucinate(args):
     hidden_size = dict_['hidden_size']
     model = learn.CharRnn(91, hidden_size=hidden_size)
     model.load_state_dict(dict_['model'])
-    s = learn.hallucinate(model, args.hidden_size, args.max_len, rand)
+    s = learn.hallucinate(model, hidden_size, args.max_len, rand)
     print(s)
 
 def train_test_split(rand, data_directory, shows, test_proportion):
