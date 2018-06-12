@@ -393,9 +393,6 @@ def main():
         help='Saved model file to use'
     )
     hallucinate_parser.add_argument(
-        '--hidden_size', required=True, type=int,
-    )
-    hallucinate_parser.add_argument(
         '--max_len', required=True, type=int,
     )
     hallucinate_parser.add_argument(
