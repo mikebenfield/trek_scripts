@@ -125,6 +125,7 @@ def test(model, hidden_size, loss_f, strings):
 
     total_loss = 0
     for i in range(0, max_len - 1):
+        last_hidden.detach_()
         output, last_hidden = model(onehot[i, :, :], last_hidden)
         total_loss += loss_f(output, encoded_strings[i+1]).item()
 
