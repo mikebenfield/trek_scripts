@@ -189,6 +189,22 @@ def strip_html(directory):
                     f.write(line)
                     f.write('\n')
 
+def encode_directory(directory):
+    '''For every .txt file in this directory, write
+    a .encode file according to our scheme.'''
+    import torch
+    import trek_scripts.strings as strings
+
+    path = pathlib.Path(directory)
+    for child in path.iterdir():
+        if child.suffix != '.txt':
+            continue
+        with open(child) as f:
+            text = f.read()
+        tensor = strings.encode_string(text)
+        new_file_name = child.with_suffix('.encode')
+        torch.save(tensor, new_file_name)
+
 def arg_download(args):
     download(args.url, args.dir)
 
@@ -196,6 +212,11 @@ def arg_strip(args):
     for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
         path = pathlib.PurePath(args.dir, name)
         strip_html(path)
+
+def arg_encode(args):
+    for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
+        path = pathlib.PurePath(args.dir, name)
+        encode_directory(path)
 
 def select_from_list(rand, lst, count):
     if count >= len(lst):
@@ -219,9 +240,10 @@ def arg_hallucinate(args):
     dict_ = torch.load(args.model)
     hidden_size = dict_['hidden_size']
     layer_size = dict_['layer_size']
-    model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
+    num_layers = dict_['num_layers']
+    model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size, num_layers=num_layers)
     model.load_state_dict(dict_['model'])
-    s = learn.hallucinate(model, hidden_size, args.max_len, rand)
+    s = learn.hallucinate(model, args.max_len, rand)
     print(s)
 
 def train_test_split(rand, data_directory, shows, test_proportion):
@@ -232,7 +254,7 @@ def train_test_split(rand, data_directory, shows, test_proportion):
     episodes = []
     for show in shows:
         for child in pathlib.Path(data_directory, show).iterdir():
-            if child.suffix == '.txt':
+            if child.suffix == '.encode':
                 episodes.append(pathlib.Path(*child.parts[-2:]))
     test_size = int(test_proportion * len(episodes))
     test_episodes, train_episodes = select_from_list(rand, episodes, test_size)
@@ -265,9 +287,10 @@ def arg_train(args):
         dict_ = torch.load(args.model)
         hidden_size = dict_['hidden_size']
         layer_size = dict_['layer_size']
+        num_layers = dict_['num_layers']
         test_episodes = dict_['test_episodes']
         train_episodes = dict_['train_episodes']
-        model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
+        model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size, num_layers=num_layers)
         optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
         model.load_state_dict(dict_['model'])
         optimizer.load_state_dict(dict_['optimizer'])
@@ -285,9 +308,10 @@ def arg_train(args):
             args.directory,
             shows,
             args.test_size)
+        num_layers = args.num_layers
         hidden_size = args.hidden_size
         layer_size = args.layer_size
-        model = learn.CharRnn(91, hidden_size, layer_size)
+        model = learn.CharRnn(91, hidden_size, layer_size, num_layers)
         optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
     if opts.cuda:
@@ -301,31 +325,41 @@ def arg_train(args):
         print('beginning epoch {}'.format(epoch))
 
         total_train_loss = 0
-        for train_batch in batch_iter(rand, args.batch_size, train_paths):
-            print('batch')
-            strings = [open(ep).read() for ep in train_batch]
-            loss = learn.train(model, hidden_size, loss_f, optimizer,
-                               args.chunk_size, strings)
-            total_train_loss += len(strings) * loss
+        for i, train_batch in enumerate(batch_iter(rand, args.batch_size, train_paths)):
+            tensors = [torch.load(ep) for ep in train_batch]
+            if opts.cuda:
+                tensors = [tensor.cuda() for tensor in tensors]
+            loss = learn.train(model, loss_f, optimizer,
+                               args.chunk_size, tensors)
+            print('batch {}; loss {}'.format(i, loss))
+            total_train_loss += len(tensors) * loss
+            s = learn.hallucinate(model, 500, rand)
+            print(s)
+            print('')
 
         average_loss = total_train_loss / len(train_episodes)
         print('average training loss for epoch {}: {}'.format(epoch, average_loss))
-        print('saving model for epoch {}'.format(epoch))
-        path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
 
         total_test_loss = 0
         for test_batch in batch_iter(rand, args.batch_size, test_paths):
-            strings = [open(ep).read() for ep in test_batch]
-            loss = learn.test(model, hidden_size, loss_f, strings)
-            total_test_loss += len(strings) * loss
-        average_loss = total_test_loss / len(test_episodes)
-        print('average test loss for epoch {}: {}'.format(epoch, average_loss))
+            tensors = [torch.load(ep) for ep in test_batch]
+            if opts.cuda:
+                tensors = [tensor.cuda() for tensor in tensors]
+            loss = learn.test(model, loss_f, tensors)
+            total_test_loss += len(tensors) * loss
+        average_test_loss = total_test_loss / len(test_episodes)
+        print('average test loss for epoch {}: {}'.format(epoch, average_test_loss))
+        print('saving model for epoch {}'.format(epoch))
+        path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
 
         torch.save({
+            'train_loss': average_loss,
+            'test_loss': average_test_loss,
             'test_episodes': test_episodes,
             'train_episodes': train_episodes,
             'hidden_size': hidden_size,
             'layer_size': layer_size,
+            'num_layers': num_layers,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, path)
@@ -345,6 +379,10 @@ def main():
     strip_parser = subparsers.add_parser('strip')
     strip_parser.add_argument('--directory', dest='dir', required=True)
     strip_parser.set_defaults(func=arg_strip)
+
+    encode_parser = subparsers.add_parser('encode')
+    encode_parser.add_argument('--directory', dest='dir', required=True)
+    encode_parser.set_defaults(func=arg_encode)
 
     train_parser = subparsers.add_parser('train')
     train_parser.add_argument(
@@ -367,6 +405,10 @@ def main():
     train_parser.add_argument(
         '--hidden_size', type=int, default=128,
         help='Size of the hidden layer in the GRU cell'
+    )
+    train_parser.add_argument(
+        '--num_layers', type=int, default=1,
+        help='Numer of GRU layers'
     )
     train_parser.add_argument(
         '--layer_size', type=int, default=128,
