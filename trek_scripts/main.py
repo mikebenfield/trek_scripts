@@ -218,7 +218,8 @@ def arg_hallucinate(args):
     rand = random.RandomState(args.seed)
     dict_ = torch.load(args.model)
     hidden_size = dict_['hidden_size']
-    model = learn.CharRnn(91, hidden_size=hidden_size)
+    layer_size = dict_['layer_size']
+    model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
     model.load_state_dict(dict_['model'])
     s = learn.hallucinate(model, hidden_size, args.max_len, rand)
     print(s)
@@ -263,9 +264,10 @@ def arg_train(args):
     if args.model:
         dict_ = torch.load(args.model)
         hidden_size = dict_['hidden_size']
+        layer_size = dict_['layer_size']
         test_episodes = dict_['test_episodes']
         train_episodes = dict_['train_episodes']
-        model = learn.CharRnn(91, hidden_size=hidden_size)
+        model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         model.load_state_dict(dict_['model'])
         optimizer.load_state_dict(dict_['optimizer'])
@@ -279,7 +281,8 @@ def arg_train(args):
             shows,
             args.test_size)
         hidden_size = args.hidden_size
-        model = learn.CharRnn(91, hidden_size)
+        layer_size = args.layer_size
+        model = learn.CharRnn(91, hidden_size, layer_size)
         optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
     if opts.cuda:
@@ -317,6 +320,7 @@ def arg_train(args):
             'test_episodes': test_episodes,
             'train_episodes': train_episodes,
             'hidden_size': hidden_size,
+            'layer_size': layer_size,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, path)
@@ -359,6 +363,10 @@ def main():
     train_parser.add_argument(
         '--hidden_size', type=int, default=128,
         help='Size of the hidden layer in the GRU cell'
+    )
+    train_parser.add_argument(
+        '--layer_size', type=int, default=128,
+        help='Size of the layer in the GRU cell'
     )
     train_parser.add_argument(
         '--chunk_size', required=True, type=int,
