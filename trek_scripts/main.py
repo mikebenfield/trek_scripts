@@ -216,7 +216,10 @@ def arg_hallucinate(args):
     import numpy.random as random
     import trek_scripts.learn as learn
     rand = random.RandomState(args.seed)
-    model = torch.load(args.model, map_location=lambda storage, loc: storage)
+    dict_ = torch.load(args.model)
+    hidden_size = dict_['hidden_size']
+    model = learn.CharRnn(91, hidden_size=hidden_size)
+    model.load_state_dict(dict_['model'])
     s = learn.hallucinate(model, args.hidden_size, args.max_len, rand)
     print(s)
 
