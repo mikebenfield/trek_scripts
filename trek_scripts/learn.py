@@ -1,6 +1,4 @@
 
-N_CODEPOINTS = 91
-
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -23,41 +21,13 @@ class CharRnn(nn.Module):
         x = F.log_softmax(x, dim=1)
         return (x, hidden)
 
-def char_to_code(char):
-    code = ord(char)
-    if code == 0xA:
-        return 0
-    if 0x20 <= code <= 0x22:
-        return code - 0x1F
-    if 0x26 <= code <= 0x7A:
-        return code - 0x22
-    if char == '~':
-        return N_CODEPOINTS-2
-    if char == '@':
-        return N_CODEPOINTS-1
-    raise ValueError('Invalid char: {} with codepoint {}'.format(char, code))
-
-def code_to_char(index):
-    if index == 0:
-        return '\n'
-    if 1 <= index <= 3:
-        return chr(index + 0x1F)
-    if 4 <= index <= 88:
-        return chr(index + 0x22)
-    if index == N_CODEPOINTS - 2:
-        # beginning of file
-        return '~'
-    if index == N_CODEPOINTS - 1:
-        # end of file
-        return '@'
-    raise ValueError('Invalid index: {}'.format(index))
-
 def encode_strings(chunk_size, strings):
     '''Returns (onehot, encoded_strings).
     
     index as onehot[string_index, batch_index, codepoint]
     and      encoded_strings[string_index, batch_index]
     '''
+    import time
     count = len(strings)
     max_len = 1 + max([len(s) for s in strings])
     diff = chunk_size - max_len % chunk_size + 1

@@ -189,6 +189,22 @@ def strip_html(directory):
                     f.write(line)
                     f.write('\n')
 
+def encode_directory(directory):
+    '''For every .txt file in this directory, write
+    a .encode file according to our scheme.'''
+    import torch
+    import trek_scripts.strings as strings
+
+    path = pathlib.Path(directory)
+    for child in path.iterdir():
+        if child.suffix != '.txt':
+            continue
+        with open(child) as f:
+            text = f.read()
+        tensor = strings.encode_string(text)
+        new_file_name = child.with_suffix('.encode')
+        torch.save(tensor, new_file_name)
+
 def arg_download(args):
     download(args.url, args.dir)
 
@@ -196,6 +212,11 @@ def arg_strip(args):
     for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
         path = pathlib.PurePath(args.dir, name)
         strip_html(path)
+
+def arg_encode(args):
+    for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
+        path = pathlib.PurePath(args.dir, name)
+        encode_directory(path)
 
 def select_from_list(rand, lst, count):
     if count >= len(lst):
@@ -345,6 +366,10 @@ def main():
     strip_parser = subparsers.add_parser('strip')
     strip_parser.add_argument('--directory', dest='dir', required=True)
     strip_parser.set_defaults(func=arg_strip)
+
+    encode_parser = subparsers.add_parser('encode')
+    encode_parser.add_argument('--directory', dest='dir', required=True)
+    encode_parser.set_defaults(func=arg_encode)
 
     train_parser = subparsers.add_parser('train')
     train_parser.add_argument(
