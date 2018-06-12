@@ -329,7 +329,7 @@ def arg_train(args):
                 tensors = [tensor.cuda() for tensor in tensors]
             loss = learn.train(model, hidden_size, loss_f, optimizer,
                                args.chunk_size, tensors)
-            total_train_loss += len(strings) * loss
+            total_train_loss += len(tensors) * loss
 
         average_loss = total_train_loss / len(train_episodes)
         print('average training loss for epoch {}: {}'.format(epoch, average_loss))
@@ -342,7 +342,7 @@ def arg_train(args):
             if opts.cuda:
                 tensors = [tensor.cuda() for tensor in tensors]
             loss = learn.test(model, hidden_size, loss_f, tensors)
-            total_test_loss += len(strings) * loss
+            total_test_loss += len(tensors) * loss
         average_loss = total_test_loss / len(test_episodes)
         print('average test loss for epoch {}: {}'.format(epoch, average_loss))
 
