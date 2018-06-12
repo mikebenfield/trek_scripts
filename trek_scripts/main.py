@@ -268,9 +268,14 @@ def arg_train(args):
         test_episodes = dict_['test_episodes']
         train_episodes = dict_['train_episodes']
         model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
         model.load_state_dict(dict_['model'])
         optimizer.load_state_dict(dict_['optimizer'])
+        if opts.cuda:
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if torch.is_tensor(v):
+                        state[k] = v.cuda()
         del dict_
     else:
         shows = args.shows.split(',')
