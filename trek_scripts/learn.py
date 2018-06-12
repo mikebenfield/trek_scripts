@@ -111,7 +111,10 @@ def train(model, hidden_size, loss_f, optimizer, chunk_size, tensors):
     model.train()
 
     count = len(tensors)
-    max_len = max(len(tensor) for tensor in tensors)
+    max_len = 1 + max(len(tensor) for tensor in tensors)
+    diff = chunk_size - max_len % chunk_size + 1
+    # now max_len % chunk_size == 1
+    max_len += diff
 
     encoded = torch.zeros([max_len, count], dtype=torch.long)
     onehot = torch.zeros([max_len, count, strings.N_CODEPOINTS])
@@ -139,7 +142,7 @@ def train(model, hidden_size, loss_f, optimizer, chunk_size, tensors):
         loss = torch.zeros([1], requires_grad=True)
         if opts.cuda:
             loss = loss.cuda()
-        for j in range(i, min(i+chunk_size, max_len)):
+        for j in range(i, i + chunk_size):
             output, last_hidden = model(onehot[j, :, :], last_hidden)
             loss = loss.clone()
             new_loss = loss_f(output, encoded[j+1])
