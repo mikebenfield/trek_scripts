@@ -105,19 +105,32 @@ def test(model, hidden_size, loss_f, strings):
 
     return total_loss / (max_len - 1)
 
-def train(model, hidden_size, loss_f, optimizer, chunk_size, strings):
-    onehot, encoded_strings = encode_strings(chunk_size, strings)
-    max_len, count = encoded_strings.size()
-    del strings
-
-    # print('Strings encoded')
+def train(model, hidden_size, loss_f, optimizer, chunk_size, tensors):
+    import trek_scripts.strings as strings
 
     model.train()
 
+    count = len(tensors)
+    max_len = max(len(tensor) for tensor in tensors)
+
+    encoded = torch.zeros([max_len, count], dtype=torch.long)
+    onehot = torch.zeros([max_len, count, strings.N_CODEPOINTS])
     last_hidden = torch.zeros([count, hidden_size])
+    indices = torch.arange(max_len, dtype=torch.long)
 
     if opts.cuda:
+        encoded = encoded.cuda()
+        onehot = onehot.cuda()
         last_hidden = last_hidden.cuda()
+        indices = indices.cuda()
+
+    for i in range(count):
+        tensor = tensors[i]
+        length = len(tensor)
+        encoded[:length, i] = tensor
+        onehot[indices, i, encoded[:, i]] = 1
+
+    del indices
 
     total_loss = 0
     for i in range(0, max_len - 1, chunk_size):
@@ -129,7 +142,7 @@ def train(model, hidden_size, loss_f, optimizer, chunk_size, strings):
         for j in range(i, min(i+chunk_size, max_len)):
             output, last_hidden = model(onehot[j, :, :], last_hidden)
             loss = loss.clone()
-            new_loss = loss_f(output, encoded_strings[j+1])
+            new_loss = loss_f(output, encoded[j+1])
             loss += new_loss
         total_loss += loss.item()
         loss.backward()
