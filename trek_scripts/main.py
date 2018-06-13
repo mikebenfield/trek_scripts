@@ -242,7 +242,7 @@ def arg_hallucinate(args):
     layer_size = dict_['layer_size']
     model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
     model.load_state_dict(dict_['model'])
-    s = learn.hallucinate(model, hidden_size, args.max_len, rand)
+    s = learn.hallucinate(model, args.max_len, rand)
     print(s)
 
 def train_test_split(rand, data_directory, shows, test_proportion):
@@ -327,7 +327,7 @@ def arg_train(args):
             tensors = [torch.load(ep) for ep in train_batch]
             if opts.cuda:
                 tensors = [tensor.cuda() for tensor in tensors]
-            loss = learn.train(model, hidden_size, loss_f, optimizer,
+            loss = learn.train(model, loss_f, optimizer,
                                args.chunk_size, tensors)
             total_train_loss += len(tensors) * loss
 
@@ -341,7 +341,7 @@ def arg_train(args):
             tensors = [torch.load(ep) for ep in test_batch]
             if opts.cuda:
                 tensors = [tensor.cuda() for tensor in tensors]
-            loss = learn.test(model, hidden_size, loss_f, tensors)
+            loss = learn.test(model, loss_f, tensors)
             total_test_loss += len(tensors) * loss
         average_loss = total_test_loss / len(test_episodes)
         print('average test loss for epoch {}: {}'.format(epoch, average_loss))
