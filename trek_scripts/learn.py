@@ -4,12 +4,13 @@ from torch import nn
 import torch.nn.functional as F
 
 import trek_scripts.opts as opts
+import trek_scripts.strings as strings
 
 class CharRnn(nn.Module):
     def __init__(self, io_size, hidden_size, layer_size):
         super().__init__()
         self.io_size = io_size
-        self.gru = nn.GRUCell(io_size, hidden_size)
+        self.gru = nn.GRU(io_size, hidden_size, num_layers=3)
         self.linear1 = nn.Linear(hidden_size, layer_size)
         self.linear2 = nn.Linear(layer_size, io_size)
 
@@ -20,6 +21,30 @@ class CharRnn(nn.Module):
         x = self.linear2(x)
         x = F.log_softmax(x, dim=1)
         return (x, hidden)
+
+def format_tensors(chunk_size, tensors):
+    count = len(tensors)
+    max_len = 1 + max(len(tensor) for tensor in tensors)
+    diff = chunk_size - max_len % chunk_size + 1
+    # now max_len % chunk_size == 1
+    max_len += diff
+
+    encoded = torch.zeros([max_len, count], dtype=torch.long)
+    onehot = torch.zeros([max_len, count, strings.N_CODEPOINTS])
+    indices = torch.arange(max_len, dtype=torch.long)
+
+    if opts.cuda:
+        encoded = encoded.cuda()
+        onehot = onehot.cuda()
+        indices = indices.cuda()
+
+    for i in range(count):
+        tensor = tensors[i]
+        length = len(tensor)
+        encoded[:length, i] = tensor
+        onehot[indices, i, encoded[:, i]] = 1
+
+    return onehot, encoded
 
 def encode_strings(chunk_size, strings):
     '''Returns (onehot, encoded_strings).
@@ -85,58 +110,38 @@ def hallucinate(model, hidden_size, max_len, rand):
     return ''.join(output)
 
 def test(model, hidden_size, loss_f, strings):
-    onehot, encoded_strings = encode_strings(1, strings)
-    max_len, count = encoded_strings.size()
-    del strings
+    onehot, encoded = format_tensors(1, tensors)
 
     # print('Test strings encoded')
 
     model.eval()
 
-    last_hidden = torch.zeros([count, hidden_size])
+    last_hidden = torch.zeros([len(tensors), hidden_size])
     if opts.cuda:
         last_hidden = last_hidden.cuda()
 
     total_loss = 0
-    for i in range(0, max_len - 1):
+    for i in range(0, len(encoded) - 1):
         last_hidden.detach_()
         output, last_hidden = model(onehot[i, :, :], last_hidden)
         total_loss += loss_f(output, encoded_strings[i+1]).item()
 
-    return total_loss / (max_len - 1)
+    return total_loss / (len(encoded) - 1)
 
 def train(model, hidden_size, loss_f, optimizer, chunk_size, tensors):
     import trek_scripts.strings as strings
 
     model.train()
 
-    count = len(tensors)
-    max_len = 1 + max(len(tensor) for tensor in tensors)
-    diff = chunk_size - max_len % chunk_size + 1
-    # now max_len % chunk_size == 1
-    max_len += diff
+    onehot, encoded = format_tensors(chunk_size, tensors)
 
-    encoded = torch.zeros([max_len, count], dtype=torch.long)
-    onehot = torch.zeros([max_len, count, strings.N_CODEPOINTS])
-    last_hidden = torch.zeros([count, hidden_size])
-    indices = torch.arange(max_len, dtype=torch.long)
+    last_hidden = torch.zeros([len(tensors), hidden_size])
 
     if opts.cuda:
-        encoded = encoded.cuda()
-        onehot = onehot.cuda()
         last_hidden = last_hidden.cuda()
-        indices = indices.cuda()
-
-    for i in range(count):
-        tensor = tensors[i]
-        length = len(tensor)
-        encoded[:length, i] = tensor
-        onehot[indices, i, encoded[:, i]] = 1
-
-    del indices
 
     total_loss = 0
-    for i in range(0, max_len - 1, chunk_size):
+    for i in range(0, len(encoded) - 1, chunk_size):
         last_hidden.detach_()
         optimizer.zero_grad()
         loss = torch.zeros([1], requires_grad=True)
@@ -150,4 +155,4 @@ def train(model, hidden_size, loss_f, optimizer, chunk_size, tensors):
         total_loss += loss.item()
         loss.backward()
         optimizer.step()
-    return total_loss / (max_len - 1)
+    return total_loss / (len(encoded) - 1)
