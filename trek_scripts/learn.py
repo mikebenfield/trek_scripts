@@ -7,10 +7,10 @@ import trek_scripts.opts as opts
 import trek_scripts.strings as strings
 
 class CharRnn(nn.Module):
-    def __init__(self, io_size, hidden_size, layer_size):
+    def __init__(self, io_size, hidden_size, layer_size, num_layers):
         super().__init__()
         self.io_size = io_size
-        self.gru = nn.GRU(io_size, hidden_size, num_layers=3, batch_first=False)
+        self.gru = nn.GRU(io_size, hidden_size, num_layers=num_layers, batch_first=False)
         self.linear1 = nn.Linear(hidden_size, layer_size)
         self.linear2 = nn.Linear(layer_size, io_size)
 
@@ -21,7 +21,7 @@ class CharRnn(nn.Module):
         x = self.linear1(x)
         x = F.relu(x)
         x = self.linear2(x)
-        x = F.log_softmax(x, dim=1)
+        x = F.log_softmax(x, dim=2)
         sz = x.size()
         return (x.view(sz[0], sz[2]), hidden)
 
@@ -110,7 +110,7 @@ def hallucinate(model, max_len, rand):
 
     return ''.join(output)
 
-def test(model, loss_f, strings):
+def test(model, loss_f, tensors):
     onehot, encoded = format_tensors(1, tensors)
 
     # print('Test strings encoded')
@@ -122,9 +122,9 @@ def test(model, loss_f, strings):
     total_loss = 0
     for i in range(0, len(encoded) - 1):
         if not last_hidden is None:
-            last_hidden.detach_()
+            last_hidden = last_hidden.detach()
         output, last_hidden = model(onehot[i, :, :], last_hidden)
-        total_loss += loss_f(output, encoded_strings[i+1]).item()
+        total_loss += loss_f(output, encoded[i+1]).item()
 
     return total_loss / (len(encoded) - 1)
 
@@ -141,7 +141,7 @@ def train(model, loss_f, optimizer, chunk_size, tensors):
     total_loss = 0
     for i in range(0, len(encoded) - 1, chunk_size):
         if not last_hidden is None:
-            last_hidden.detach_()
+            last_hidden = last_hidden.detach()
         optimizer.zero_grad()
         loss = torch.zeros([1], requires_grad=True)
         if opts.cuda:

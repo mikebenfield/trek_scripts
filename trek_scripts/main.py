@@ -286,9 +286,10 @@ def arg_train(args):
         dict_ = torch.load(args.model)
         hidden_size = dict_['hidden_size']
         layer_size = dict_['layer_size']
+        num_layers = dict_['num_layers']
         test_episodes = dict_['test_episodes']
         train_episodes = dict_['train_episodes']
-        model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size)
+        model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size, num_layers=num_layers)
         optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
         model.load_state_dict(dict_['model'])
         optimizer.load_state_dict(dict_['optimizer'])
@@ -306,9 +307,10 @@ def arg_train(args):
             args.directory,
             shows,
             args.test_size)
+        num_layers = args.num_layers
         hidden_size = args.hidden_size
         layer_size = args.layer_size
-        model = learn.CharRnn(91, hidden_size, layer_size)
+        model = learn.CharRnn(91, hidden_size, layer_size, num_layers)
         optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
     if opts.cuda:
@@ -333,8 +335,6 @@ def arg_train(args):
 
         average_loss = total_train_loss / len(train_episodes)
         print('average training loss for epoch {}: {}'.format(epoch, average_loss))
-        print('saving model for epoch {}'.format(epoch))
-        path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
 
         total_test_loss = 0
         for test_batch in batch_iter(rand, args.batch_size, test_paths):
@@ -343,10 +343,14 @@ def arg_train(args):
                 tensors = [tensor.cuda() for tensor in tensors]
             loss = learn.test(model, loss_f, tensors)
             total_test_loss += len(tensors) * loss
-        average_loss = total_test_loss / len(test_episodes)
-        print('average test loss for epoch {}: {}'.format(epoch, average_loss))
+        average_test_loss = total_test_loss / len(test_episodes)
+        print('average test loss for epoch {}: {}'.format(epoch, average_test_loss))
+        print('saving model for epoch {}'.format(epoch))
+        path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
 
         torch.save({
+            'train_loss': average_loss,
+            'test_loss': average_test_loss,
             'test_episodes': test_episodes,
             'train_episodes': train_episodes,
             'hidden_size': hidden_size,
@@ -396,6 +400,10 @@ def main():
     train_parser.add_argument(
         '--hidden_size', type=int, default=128,
         help='Size of the hidden layer in the GRU cell'
+    )
+    train_parser.add_argument(
+        '--num_layers', type=int, default=1,
+        help='Numer of GRU layers'
     )
     train_parser.add_argument(
         '--layer_size', type=int, default=128,
