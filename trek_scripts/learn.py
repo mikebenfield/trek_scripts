@@ -74,7 +74,7 @@ def encode_strings(chunk_size, strings):
                 # N_CODEPOINTS - 1 will indicate end of file
                 code = N_CODEPOINTS - 1
             else:
-                code = char_to_code(string[string_index-1])
+                code = strings.char_to_code(string[string_index-1])
             onehot[string_index, j, code] = 1
             encoded_strings[string_index, j] = code
 
@@ -90,7 +90,7 @@ def hallucinate(model, max_len, rand):
     model.eval()
     output = []
 
-    last_code = char_to_code('~')
+    last_code = strings.char_to_code('~')
 
     hidden = None
 
