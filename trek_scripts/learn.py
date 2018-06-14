@@ -103,7 +103,7 @@ def hallucinate(model, max_len, rand):
         nparray = out.detach().numpy()
         nparray = np.exp(nparray)
         last_code = rand.choice(strings.N_CODEPOINTS, p=nparray[0])
-        char = code_to_char(last_code)
+        char = strings.code_to_char(last_code)
         if char == '@':
             break
         output.append(char)
