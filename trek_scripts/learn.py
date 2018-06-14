@@ -95,14 +95,14 @@ def hallucinate(model, max_len, rand):
     hidden = None
 
     for _ in range(max_len):
-        inp = torch.zeros([1, N_CODEPOINTS])
+        inp = torch.zeros([1, strings.N_CODEPOINTS])
         inp[0, last_code] = 1
         if opts.cuda:
             inp = inp.cuda()
         out, hidden = model(inp, hidden)
         nparray = out.detach().numpy()
         nparray = np.exp(nparray)
-        last_code = rand.choice(N_CODEPOINTS, p=nparray[0])
+        last_code = rand.choice(strings.N_CODEPOINTS, p=nparray[0])
         char = code_to_char(last_code)
         if char == '@':
             break
