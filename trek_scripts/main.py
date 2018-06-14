@@ -240,7 +240,7 @@ def arg_hallucinate(args):
     dict_ = torch.load(args.model)
     hidden_size = dict_['hidden_size']
     layer_size = dict_['layer_size']
-    num_layers = dict_['num_layers']
+    # num_layers = dict_['num_layers']
     model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size, num_layers=1)
     model.load_state_dict(dict_['model'])
     s = learn.hallucinate(model, args.max_len, rand)
