@@ -331,8 +331,11 @@ def arg_train(args):
                 tensors = [tensor.cuda() for tensor in tensors]
             loss = learn.train(model, loss_f, optimizer,
                                args.chunk_size, tensors)
-            print('batch {}; loss {}', i, loss)
+            print('batch {}; loss {}'.format(i, loss))
             total_train_loss += len(tensors) * loss
+            s = learn.hallucinate(model, 500, rand)
+            print(s)
+            print('')
 
         average_loss = total_train_loss / len(train_episodes)
         print('average training loss for epoch {}: {}'.format(epoch, average_loss))
