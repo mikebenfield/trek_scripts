@@ -325,13 +325,13 @@ def arg_train(args):
         print('beginning epoch {}'.format(epoch))
 
         total_train_loss = 0
-        for train_batch in batch_iter(rand, args.batch_size, train_paths):
-            print('batch')
+        for i, train_batch in enumerate(batch_iter(rand, args.batch_size, train_paths)):
             tensors = [torch.load(ep) for ep in train_batch]
             if opts.cuda:
                 tensors = [tensor.cuda() for tensor in tensors]
             loss = learn.train(model, loss_f, optimizer,
                                args.chunk_size, tensors)
+            print('batch {}; loss {}', i, loss)
             total_train_loss += len(tensors) * loss
 
         average_loss = total_train_loss / len(train_episodes)
