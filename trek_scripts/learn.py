@@ -10,7 +10,7 @@ class CharRnn(nn.Module):
     def __init__(self, io_size, hidden_size, layer_size, num_layers):
         super().__init__()
         self.io_size = io_size
-        self.gru = nn.GRU(io_size, hidden_size, num_layers=num_layers, batch_first=False)
+        self.gru = nn.GRU(io_size, hidden_size, num_layers=num_layers, batch_first=True)
         self.linear1 = nn.Linear(hidden_size, layer_size)
         self.linear2 = nn.Linear(layer_size, io_size)
 
