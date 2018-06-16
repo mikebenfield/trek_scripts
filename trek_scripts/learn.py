@@ -100,7 +100,7 @@ def hallucinate(model, max_len, rand):
         if opts.cuda:
             inp = inp.cuda()
         out, hidden = model(inp, hidden)
-        nparray = out.detach().numpy()
+        nparray = out.detach().cpu().numpy()
         nparray = np.exp(nparray)
         last_code = rand.choice(strings.N_CODEPOINTS, p=nparray[0])
         char = strings.code_to_char(last_code)
