@@ -44,7 +44,9 @@ def format_tensors(chunk_size, tensors):
     for i in range(count):
         tensor = tensors[i]
         length = len(tensor)
-        encoded[:length, i] = tensor
+        encoded[0, i] = strings.char_to_code('~')
+        encoded[1:length+1, i] = tensor
+        encoded[length+1:, i] = strings.char_to_code('@')
         onehot[indices, i, encoded[:, i]] = 1
 
     return onehot, encoded
