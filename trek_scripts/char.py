@@ -252,7 +252,7 @@ def full_train(
             print('batch {}; loss {}'.format(i, loss))
             total_train_loss += len(tensors) * loss
 
-        s = learn.hallucinate(model, 500, rand)
+        s = hallucinate(model, 500, rand)
         print(s)
         print('')
 
