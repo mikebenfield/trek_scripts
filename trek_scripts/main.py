@@ -269,6 +269,39 @@ def batch_iter(rand, batch_size, lst):
         (use, not_visited) = select_from_list(rand, not_visited, batch_size)
         yield use
 
+def arg_train_word(args):
+    import numpy.random as random
+    import torch.nn as nn
+
+    import trek_scripts.opts as opts
+    import trek_scripts.fasttext as fasttext
+    import trek_scripts.word as word
+    
+    opts.cuda = args.cuda
+
+    rand = random.RandomState(args.seed)
+
+    directory = args.directory
+    shows = args.shows.split(',')
+    shows = [show.strip() for show in shows]
+    test_episodes, train_episodes = train_test_split(
+        rand, 
+        args.directory,
+        shows,
+        args.test_size)
+    num_layers = args.num_layers
+    hidden_size = args.hidden_size
+    dropout = args.dropout
+    batch_size = args.batch_size
+    embedding_file = pathlib.Path(directory, args.embedding_file)
+
+    words, lst = fasttext.read_embeddings_file(embedding_file)
+
+    model = WordRnn(input_size=len(words[0]), hidden_size=hidden_size,
+                    num_layers=num_layers, output_size = len(lst))
+
+    loss_f = nn.NLLoss()
+
 def arg_train(args):
     import torch
     import torch.nn as nn
@@ -365,7 +398,32 @@ def arg_train(args):
         }, path)
 
     print('Done')
-            
+
+def arg_fasttext_prep(args):
+    import trek_scripts.fasttext as fasttext
+    directory = args.directory
+    shows = args.shows.split(',')
+    dirs = [pathlib.Path(directory, show) for show in shows]
+    result = fasttext.data_prep(dirs)
+    result_path = pathlib.Path(directory, 'trek.txt')
+    with open(result_path, 'w') as f:
+        f.write(result)
+
+def arg_fasttext_embed_parser(args):
+    import subprocess
+
+    directory = args.directory
+    dim = args.dim
+    out_filename = args.filename
+    epochs = args.epochs
+    in_filename = pathlib.Path(directory, 'trek.txt')
+    out_filename = pathlib.Path(directory, out_filename)
+
+    subprocess.run(['fasttext', 'cbow', '-input', in_filename,
+                    '-output', out_filename,
+                    '-epoch', epochs],
+                   check=True)
+
 def main():
     parser = argparse.ArgumentParser(description='Generate some scripts')
 
@@ -383,6 +441,101 @@ def main():
     encode_parser = subparsers.add_parser('encode')
     encode_parser.add_argument('--directory', dest='dir', required=True)
     encode_parser.set_defaults(func=arg_encode)
+
+    fasttext_prep_parser = subparsers.add_parser(
+        'fasttext_prep',
+        help='Prepare and concatenate the shows for fasttext; save in the file trek.txt in the directory specified.'
+    )
+    fasttext_prep_parser.add_argument(
+        '--directory', required=True,
+        help='Data directory containing transcript directories'
+    )
+    fasttext_prep_parser.add_argument(
+        '--shows',
+        default='TOS,TNG,DS9,VOY,ENT',
+        help='Comma separated list of series to train on'
+    )
+    fasttext_prep_parser.set_defaults(func=arg_fasttext_prep)
+
+    fasttext_embed_parser = subparsers.add_parser(
+        'fasttext_embed',
+        help='Use fasttext to construct word embeddings.'
+    )
+    fasttext_embed_parser.add_argument(
+        '--directory', required=True,
+        help='Data directory containing trek.txt output from fasttext_prep'
+    )
+    fasttext_embed_parser.add_argument(
+        '--epochs', required=True,
+        help='How many epochs should fasttext train?'
+    )
+    fasttext_embed_parser.add_argument(
+        '--dim', required=True,
+        help='How many dimensions should the space of word vectors be?'
+    )
+    fasttext_embed_parser.add_argument(
+        '--filename', required=True,
+        help='Name of file prefix in data directory to save word embeddings'
+    )
+    fasttext_embed_parser.set_defaults(func=arg_fasttext_embed_parser)
+
+    train_word_parser = subparsers.add_parser(
+        'train_word',
+        help='Train a word level model based on embeddings constructed by fasttext.'
+    )
+    train_word_parser.add_argument(
+        '--directory', required=True,
+        help='Data directory containing transcript directories and word embeddings'
+    )
+    train_word_parser.add_argument(
+        '--embedding_file', required=True,
+        help='Filename in data directory of embeddings file'
+    )
+    train_word_parser.add_argument(
+        '--num_layers', required=True,
+        help='How many LSTM layers to use.'
+    )
+    train_word_parser.add_argument(
+        '--shows',
+        default='TOS,TNG,DS9,VOY,ENT',
+        help='Comma separated list of series to train on'
+    )
+    train_word_parser.add_argument(
+        '--model_directory', required=True,
+        help='Directory in which to save models'
+    )
+    train_word_parser.add_argument(
+        '--hidden_size', type=int, default=256,
+        help='Size of the hidden layer in the LSTM cell'
+    )
+    train_word_parser.add_argument(
+        '--dropout', type=float, default=0.0,
+        help='Dropout probability (0 for no dropout)'
+    )
+    train_word_parser.add_argument(
+        '--cuda', action='store_true',
+    )
+    train_word_parser.add_argument(
+        '--test_size', type=float, required=True,
+        help='Proportion of transcripts to use for testing'
+    )
+    train_word_parser.add_argument(
+        '--batch_size', type=int, default=10,
+    )
+    train_word_parser.add_argument(
+        '--epochs', type=int, required=True,
+        help='Number of training epochs'
+    )
+    train_word_parser.add_argument(
+        '--seed', type=int,
+        help='Random number seed'
+    )
+    train_word_parser.add_argument(
+        '--learning_rate', type=float, default=0.001,
+        help='Learning rate for Adam optimizer'
+    )
+    train_word_parser.set_defaults(func=arg_train_word)
+
 
     train_parser = subparsers.add_parser('train')
     train_parser.add_argument(
