@@ -301,22 +301,23 @@ def arg_train_char(args):
 def arg_fasttext_prep(args):
     import trek_scripts.fasttext as fasttext
     directory = args.directory
+
     shows = args.shows.split(',')
     dirs = [pathlib.Path(directory, show) for show in shows]
-    result = fasttext.data_prep(dirs)
+    result = fasttext.files_prep(dirs)
     result_path = pathlib.Path(directory, 'trek.txt')
     with open(result_path, 'w') as f:
         f.write(result)
 
-def arg_fasttext_embed_parser(args):
+def arg_fasttext_embed(args):
     import subprocess
 
     directory = args.directory
+    word_directory = args.word_directory
     dim = args.dim
-    out_filename = args.filename
     epochs = args.epochs
     in_filename = pathlib.Path(directory, 'trek.txt')
-    out_filename = pathlib.Path(directory, out_filename)
+    out_filename = pathlib.Path(word_directory, 'words')
 
     subprocess.run(['fasttext', 'cbow', '-input', in_filename,
                     '-output', out_filename,
@@ -368,6 +369,10 @@ def main():
         help='Data directory containing trek.txt output from fasttext_prep'
     )
     fasttext_embed_parser.add_argument(
+        '--word_directory', required=True,
+        help='Directory in which to save embeddings file.'
+    )
+    fasttext_embed_parser.add_argument(
         '--epochs', required=True,
         help='How many epochs should fasttext train?'
     )
@@ -375,11 +380,7 @@ def main():
         '--dim', required=True,
         help='How many dimensions should the space of word vectors be?'
     )
-    fasttext_embed_parser.add_argument(
-        '--filename', required=True,
-        help='Name of file prefix in data directory to save word embeddings'
-    )
-    fasttext_embed_parser.set_defaults(func=arg_fasttext_embed_parser)
+    fasttext_embed_parser.set_defaults(func=arg_fasttext_embed)
 
     train_word_parser = subparsers.add_parser(
         'train_word',

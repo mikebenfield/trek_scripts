@@ -31,8 +31,13 @@ def string_prep(s):
     s = s.replace('\n', ' # ')
     return s
 
-def data_prep(directories):
-    '''prepare all the text files in the given directory and concatenate'''
+def files_prep(directories):
+    """Prepare the text files in the given directories and concatenate.
+
+    By 'prepare' we mostly mean to add some spacing so that fasttext will
+    see punctuation as separate words.
+    """
+
     result = []
     for directory in directories:
         path = pathlib.Path(directory)
