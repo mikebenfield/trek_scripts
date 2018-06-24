@@ -9,6 +9,7 @@ from torch import nn
 import torch.nn.functional as F
 
 import trek_scripts.opts as opts
+from trek_scripts.util import batch_iter
 
 class CharRnnTop(nn.Module):
     def __init__(self, io_size, hidden_size, layer_size, num_layers):
@@ -85,7 +86,7 @@ def encode_string(string):
 def encode_directory(directory):
     '''For every .txt file in this directory, write
     a .encode file according to our scheme.'''
-    import torch
+    import pathlib
 
     path = pathlib.Path(directory)
     for child in path.iterdir():
@@ -127,7 +128,7 @@ def _format_tensors(chunk_size, tensors):
 
     encoded = torch.zeros([transcript_len, batch_size], dtype=torch.long)
     onehot = torch.zeros([transcript_len, batch_size, N_CODEPOINTS])
-    indices = torch.arange(max_len, dtype=torch.long)
+    indices = torch.arange(transcript_len, dtype=torch.long)
 
     if opts.cuda:
         encoded = encoded.cuda()
@@ -152,7 +153,7 @@ def test(model, loss_f, tensors):
     a transcript.
     """
 
-    onehot, encoded = format_tensors(1, tensors)
+    onehot, encoded = _format_tensors(1, tensors)
 
     model.eval()
 
@@ -178,7 +179,7 @@ def train(model, loss_f, optimizer, chunk_size, tensors):
     """
     model.train()
 
-    onehot, encoded = format_tensors(chunk_size, tensors)
+    onehot, encoded = _format_tensors(chunk_size, tensors)
 
     last_hidden = None
 
@@ -200,13 +201,75 @@ def train(model, loss_f, optimizer, chunk_size, tensors):
         optimizer.step()
     return total_loss / (len(encoded) - 1)
 
+def hallucinate(model, max_len, rand):
+    import numpy as np
+
+    model.eval()
+    output = []
+
+    last_code = strings.char_to_code('~')
+
+    hidden = None
+
+    for _ in range(max_len):
+        inp = torch.zeros([1, strings.N_CODEPOINTS])
+        inp[0, last_code] = 1
+        if opts.cuda:
+            inp = inp.cuda()
+        out, hidden = model(inp, hidden)
+        nparray = out.detach().cpu().numpy()
+        nparray = np.exp(nparray)
+        last_code = rand.choice(strings.N_CODEPOINTS, p=nparray[0])
+        char = strings.code_to_char(last_code)
+        if char == '@':
+            break
+        output.append(char)
+
+    return ''.join(output)
+
 def full_train(
     model,
     optimizer,
+    rand,
     epochs,
     train_episodes,
     test_episodes,
+    batch_size,
+    chunk_size,
     loss_f,
     model_directory,
 ):
-    for epoch 
+    for epoch in range(epochs):
+        print('Beginning epoch{}'.format(epoch))
+
+        total_train_loss = 0
+        for i, train_batch in enumerate(batch_iter(rand, batch_size, train_episodes)):
+            tensors = [torch.load(ep) for ep in train_batch]
+            if opts.cuda:
+                tensors = [tensor.cuda() for tensor in tensors]
+            loss = train(model, loss_f, optimizer,
+                         chunk_size, tensors)
+            print('batch {}; loss {}'.format(i, loss))
+            total_train_loss += len(tensors) * loss
+
+        s = learn.hallucinate(model, 500, rand)
+        print(s)
+        print('')
+
+        average_loss = total_train_loss / len(train_episodes)
+        print('average training loss for epoch {}: {}'.format(epoch, average_loss))
+
+        total_test_loss = 0
+
+        for test_batch in batch_iter(rand, args.batch_size, test_paths):
+            tensors = [torch.load(ep) for ep in test_batch]
+            if opts.cuda:
+                tensors = [tensor.cuda() for tensor in tensors]
+            loss = learn.test(model, loss_f, tensors)
+            total_test_loss += len(tensors) * loss
+        average_test_loss = total_test_loss / len(test_episodes)
+        print('average test loss for epoch {}: {}'.format(epoch, average_test_loss))
+        print('saving model for epoch {}'.format(epoch))
+        path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
+
+        torch.save(model, path)

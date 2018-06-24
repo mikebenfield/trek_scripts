@@ -8,6 +8,10 @@ import urllib
 import urllib.error
 import urllib.request
 
+from trek_scripts import char
+from trek_scripts import opts
+from trek_scripts import util
+
 def die(msg):
     import sys
     print(msg)
@@ -197,24 +201,10 @@ def arg_strip(args):
         path = pathlib.PurePath(args.dir, name)
         strip_html(path)
 
-def arg_encode(args):
+def arg_encode_char(args):
     for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
         path = pathlib.PurePath(args.dir, name)
-        encode_directory(path)
-
-def select_from_list(rand, lst, count):
-    if count >= len(lst):
-        return (lst, [])
-    indices = rand.choice(len(lst), size=count, replace=False)
-    indices = set(indices)
-    selected = []
-    others = []
-    for i, item in enumerate(lst):
-        if i in indices:
-            selected.append(item)
-        else:
-            others.append(item)
-    return (selected, others)
+        char.encode_directory(path)
 
 def arg_hallucinate(args):
     import torch
@@ -229,30 +219,7 @@ def arg_hallucinate(args):
     model.load_state_dict(dict_['model'])
     s = learn.hallucinate(model, args.max_len, rand)
     print(s)
-
-def train_test_split(rand, data_directory, shows, test_proportion):
-    '''Returns (train_episodes, test_episodes).
     
-    These are paths relative to the data directory.
-    '''
-    episodes = []
-    for show in shows:
-        for child in pathlib.Path(data_directory, show).iterdir():
-            if child.suffix == '.encode':
-                episodes.append(pathlib.Path(*child.parts[-2:]))
-    test_size = int(test_proportion * len(episodes))
-    test_episodes, train_episodes = select_from_list(rand, episodes, test_size)
-    return test_episodes, train_episodes
-    
-def batch_iter(rand, batch_size, lst):
-    visited = []
-    not_visited = lst
-    use = []
-    while not_visited:
-        visited += use
-        (use, not_visited) = select_from_list(rand, not_visited, batch_size)
-        yield use
-
 def arg_train_word(args):
     import numpy.random as random
     import torch.nn as nn
@@ -268,8 +235,9 @@ def arg_train_word(args):
     directory = args.directory
     shows = args.shows.split(',')
     shows = [show.strip() for show in shows]
-    test_episodes, train_episodes = train_test_split(
+    test_episodes, train_episodes = util.train_test_split(
         rand, 
+        '.encode',
         args.directory,
         shows,
         args.test_size)
@@ -287,50 +255,34 @@ def arg_train_word(args):
     loss_f = nn.NLLoss()
 
 
-def arg_train(args):
-    import torch
-    import torch.nn as nn
-    import torch.optim as optim
+def arg_train_char(args):
+    from torch import optim
+    from torch import nn
 
-    import numpy.random as random
-
-    from trek_scripts import learn
-    from trek_scripts import opts
+    from numpy import random
 
     opts.cuda = args.cuda
 
     rand = random.RandomState(args.seed)
 
-    if args.model:
-        dict_ = torch.load(args.model)
-        hidden_size = dict_['hidden_size']
-        layer_size = dict_['layer_size']
-        num_layers = dict_['num_layers']
-        test_episodes = dict_['test_episodes']
-        train_episodes = dict_['train_episodes']
-        model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size, num_layers=num_layers)
-        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
-        model.load_state_dict(dict_['model'])
-        optimizer.load_state_dict(dict_['optimizer'])
-        if opts.cuda:
-            for state in optimizer.state.values():
-                for k, v in state.items():
-                    if torch.is_tensor(v):
-                        state[k] = v.cuda()
-        del dict_
+    shows = args.shows.split(',')
+    shows = [show.strip() for show in shows]
+    test_episodes, train_episodes = util.train_test_split(
+        rand, 
+        '.encode',
+        args.directory,
+        shows,
+        args.test_size)
+    if args.model_name == 'top':
+        model = char.CharRnnTop(91, args.hidden_size, args.layer_size, args.num_layers)
     else:
-        shows = args.shows.split(',')
-        shows = [show.strip() for show in shows]
-        test_episodes, train_episodes = train_test_split(
-            rand, 
-            args.directory,
-            shows,
-            args.test_size)
-        num_layers = args.num_layers
-        hidden_size = args.hidden_size
-        layer_size = args.layer_size
-        model = learn.CharRnn(91, hidden_size, layer_size, num_layers)
-        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+        model = char.CharRnnNoTop(91, args.hidden_size, args.num_layers)
+
+    optimizer = optim.Adam(
+        model.parameters(),
+        lr=args.learning_rate,
+        eps=args.epsilon
+    )
 
     if opts.cuda:
         model.cuda()
@@ -339,48 +291,10 @@ def arg_train(args):
 
     train_paths = [pathlib.Path(args.directory, ep) for ep in train_episodes]
     test_paths = [pathlib.Path(args.directory, ep) for ep in test_episodes]
-    for epoch in range(args.epochs):
-        print('beginning epoch {}'.format(epoch))
 
-        total_train_loss = 0
-        for i, train_batch in enumerate(batch_iter(rand, args.batch_size, train_paths)):
-            tensors = [torch.load(ep) for ep in train_batch]
-            if opts.cuda:
-                tensors = [tensor.cuda() for tensor in tensors]
-            loss = learn.train(model, loss_f, optimizer,
-                               args.chunk_size, tensors)
-            print('batch {}; loss {}'.format(i, loss))
-            total_train_loss += len(tensors) * loss
-            s = learn.hallucinate(model, 500, rand)
-            print(s)
-            print('')
-
-        average_loss = total_train_loss / len(train_episodes)
-        print('average training loss for epoch {}: {}'.format(epoch, average_loss))
-
-        total_test_loss = 0
-        for test_batch in batch_iter(rand, args.batch_size, test_paths):
-            tensors = [torch.load(ep) for ep in test_batch]
-            if opts.cuda:
-                tensors = [tensor.cuda() for tensor in tensors]
-            loss = learn.test(model, loss_f, tensors)
-            total_test_loss += len(tensors) * loss
-        average_test_loss = total_test_loss / len(test_episodes)
-        print('average test loss for epoch {}: {}'.format(epoch, average_test_loss))
-        print('saving model for epoch {}'.format(epoch))
-        path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
-
-        torch.save({
-            'train_loss': average_loss,
-            'test_loss': average_test_loss,
-            'test_episodes': test_episodes,
-            'train_episodes': train_episodes,
-            'hidden_size': hidden_size,
-            'layer_size': layer_size,
-            'num_layers': num_layers,
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-        }, path)
+    char.full_train(model, optimizer, rand, args.epochs,
+                    train_paths, test_paths, args.batch_size, args.chunk_size, loss_f,
+                    args.model_directory)
 
     print('Done')
 
@@ -423,9 +337,12 @@ def main():
     strip_parser.add_argument('--directory', dest='dir', required=True)
     strip_parser.set_defaults(func=arg_strip)
 
-    encode_parser = subparsers.add_parser('encode')
-    encode_parser.add_argument('--directory', dest='dir', required=True)
-    encode_parser.set_defaults(func=arg_encode)
+    encode_char_parser = subparsers.add_parser(
+        'encode_char',
+        help='Encode all transcripts for character-level models.'
+    )
+    encode_char_parser.add_argument('--directory', dest='dir', required=True)
+    encode_char_parser.set_defaults(func=arg_encode_char)
 
     fasttext_prep_parser = subparsers.add_parser(
         'fasttext_prep',
@@ -521,63 +438,73 @@ def main():
     )
     train_word_parser.set_defaults(func=arg_train_word)
 
-
-    train_parser = subparsers.add_parser('train')
-    train_parser.add_argument(
+    train_char_parser = subparsers.add_parser(
+        'train_char',
+        help='Train a character level model.'
+    )
+    train_char_parser.add_argument(
         '--directory', required=True,
         help='Data directory containing transcript directories'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--model_directory', required=True,
         help='Directory in which to save models'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--model', required=False,
         help='Saved model file to begin training with'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--shows',
         default='TOS,TNG,DS9,VOY,ENT',
         help='Comma separated list of series to train on'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--hidden_size', type=int, default=128,
         help='Size of the hidden layer in the GRU cell'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--num_layers', type=int, default=1,
         help='Numer of GRU layers'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--layer_size', type=int, default=128,
         help='Size of the layer in the GRU cell'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--chunk_size', required=True, type=int,
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--cuda', action='store_true',
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--test_size', type=float, required=True,
         help='Proportion of transcripts to use for testing'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--batch_size', type=int, default=10,
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--epochs', type=int, required=True,
         help='Number of training epochs'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--seed', type=int,
         help='Random number seed'
     )
-    train_parser.add_argument(
+    train_char_parser.add_argument(
         '--learning_rate', type=float, default=0.001,
         help='Learning rate for Adam optimizer'
     )
-    train_parser.set_defaults(func=arg_train)
+    train_char_parser.add_argument(
+        '--epsilon', type=float, default=1e-4,
+        help='Epsilon parameter for Adam optimizer'
+    )
+    train_char_parser.add_argument(
+        '--model_name', default='notop',
+        help='`Top` to use a model with an extra linear layer on top.'
+    )
+    train_char_parser.set_defaults(func=arg_train_char)
 
     hallucinate_parser = subparsers.add_parser('hallucinate')
     hallucinate_parser.add_argument(
