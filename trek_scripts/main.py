@@ -189,22 +189,6 @@ def strip_html(directory):
                     f.write(line)
                     f.write('\n')
 
-def encode_directory(directory):
-    '''For every .txt file in this directory, write
-    a .encode file according to our scheme.'''
-    import torch
-    import trek_scripts.strings as strings
-
-    path = pathlib.Path(directory)
-    for child in path.iterdir():
-        if child.suffix != '.txt':
-            continue
-        with open(child) as f:
-            text = f.read()
-        tensor = strings.encode_string(text)
-        new_file_name = child.with_suffix('.encode')
-        torch.save(tensor, new_file_name)
-
 def arg_download(args):
     download(args.url, args.dir)
 
@@ -301,6 +285,7 @@ def arg_train_word(args):
                     num_layers=num_layers, output_size = len(lst))
 
     loss_f = nn.NLLoss()
+
 
 def arg_train(args):
     import torch

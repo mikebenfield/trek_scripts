@@ -33,4 +33,5 @@ def train(model, loss_f, optimizer, chunk_size, tensors, end_tensor):
         length = len(tensor)
         batch[0:length, i, :] = tensor
         batch[length:, i, :] = end_tensor
+    print('ok')
 
