@@ -11,6 +11,8 @@ import urllib.request
 from trek_scripts import char
 from trek_scripts import opts
 from trek_scripts import util
+from trek_scripts import fasttext
+from trek_scripts import hierarchy
 
 def die(msg):
     import sys
@@ -194,16 +196,16 @@ def strip_html(directory):
                     f.write('\n')
 
 def arg_download(args):
-    download(args.url, args.dir)
+    download(args.url, args.directory)
 
 def arg_strip(args):
     for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
-        path = pathlib.PurePath(args.dir, name)
+        path = pathlib.PurePath(args.directory, name)
         strip_html(path)
 
 def arg_encode_char(args):
     for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
-        path = pathlib.PurePath(args.dir, name)
+        path = pathlib.PurePath(args.directory, name)
         char.encode_directory(path)
 
 def arg_hallucinate(args):
@@ -220,39 +222,89 @@ def arg_hallucinate(args):
     s = learn.hallucinate(model, args.max_len, rand)
     print(s)
     
+def arg_embed_word(args):
+    directory = args.directory
+    embed_directory = args.embed_directory
+    embedding_path = pathlib.Path(embed_directory, 'words.vec')
+    indices, vectors  = fasttext.read_embeddings_file(embedding_path)
+
+    for show in ['TOS', 'TNG', 'DS9', 'VOY', 'ENT']:
+        show_dir = pathlib.Path(directory, show)
+        dest_dir = pathlib.Path(embed_directory, show)
+        try:
+            os.mkdir(dest_dir)
+        except FileExistsError:
+            pass
+        fasttext.embed_directory(show_dir, dest_dir, indices, vectors)
+
 def arg_train_word(args):
+    import numpy as np
     import numpy.random as random
+    import torch
     import torch.nn as nn
+    import torch.optim as optim
 
     import trek_scripts.opts as opts
-    import trek_scripts.fasttext as fasttext
     import trek_scripts.word as word
     
     opts.cuda = args.cuda
 
     rand = random.RandomState(args.seed)
 
-    directory = args.directory
+    directory = args.embedding_directory
     shows = args.shows.split(',')
     shows = [show.strip() for show in shows]
-    test_episodes, train_episodes = util.train_test_split(
+    train_episodes, test_episodes = util.train_test_split(
         rand, 
         '.encode',
-        args.directory,
+        directory,
         shows,
         args.test_size)
     num_layers = args.num_layers
     hidden_size = args.hidden_size
     dropout = args.dropout
     batch_size = args.batch_size
-    embedding_file = pathlib.Path(directory, args.embedding_file)
 
-    words, lst = fasttext.read_embeddings_file(embedding_file)
+    class_file = pathlib.Path(directory, 'words.hierarchy')
 
-    model = WordRnn(input_size=len(words[0]), hidden_size=hidden_size,
-                    num_layers=num_layers, output_size = len(lst))
+    with open(class_file) as f:
+        lines = f.readlines()
+    classes = [line.split(' ', maxsplit=1)[1] for line in lines]
+    for i, string in enumerate(classes):
+        array = np.fromstring(string, sep=' ', dtype=np.int_)
+        classes[i] = torch.from_numpy(array)
+        if opts.cuda:
+            classes[i] = classes[i].cuda()
 
-    loss_f = nn.NLLoss()
+    max_class = max(len(clas) for clas in classes)
+    tensor = torch.load(pathlib.Path(directory, 'TOS', '001.vectors'))
+    model = word.WordRnn(len(tensor[0]),
+                         hidden_size=hidden_size,
+                         num_layers=num_layers,
+                         output_size=max_class)
+
+    optimizer = optim.Adam(
+        model.parameters(),
+        lr=args.learning_rate,
+        eps=args.epsilon
+    )
+
+    train_episodes, test_episodes = util.train_test_split(
+        rand, 
+        '.indices',
+        directory,
+        shows,
+        args.test_size)
+
+    train_episodes = [pathlib.Path(directory, ep) for ep in train_episodes]
+    test_episodes = [pathlib.Path(directory, ep) for ep in test_episodes]
+
+    word_map = word.WordMap.from_directory(directory)
+
+    word.full_train(model, optimizer, rand,
+                    args.epochs, train_episodes, test_episodes,
+                    classes, args.batch_size, args.chunk_size,
+                    word_map, args.model_directory)
 
 
 def arg_train_char(args):
@@ -321,8 +373,37 @@ def arg_fasttext_embed(args):
 
     subprocess.run(['fasttext', 'cbow', '-input', in_filename,
                     '-output', out_filename,
+                    '-minCount', '1',
                     '-epoch', epochs],
                    check=True)
+
+def arg_word_hierarchy(args):
+    import torch
+
+    directory = args.embedding_directory
+    filename = pathlib.Path(directory, 'words.vec')
+    dct, lst = fasttext.read_embeddings_file(filename)
+
+    size = len(dct[lst[0]])
+    array = torch.zeros([len(lst), size])
+    for i, word in enumerate(lst):
+        array[i] = lst[dct[word]]
+
+    array = array.numpy()
+
+    result_list = hierarchy.word_hierarchy(array)
+
+    dest_file = pathlib.Path(directory, 'words.hierarchy')
+    with open(dest_file, 'w') as f:
+        for word, classes in zip(lst, result_list):
+            f.write(word)
+            f.write(' ')
+            f.write(str(classes[0]))
+            for i in classes[1:]:
+                f.write(' ')
+                f.write(str(i))
+            f.write('\n')
+
 
 def main():
     parser = argparse.ArgumentParser(description='Generate some scripts')
@@ -331,19 +412,31 @@ def main():
 
     download_parser = subparsers.add_parser('download')
     download_parser.add_argument('--url', dest='url', required=True)
-    download_parser.add_argument('--directory', dest='dir', required=True)
+    download_parser.add_argument('--directory', required=True)
     download_parser.set_defaults(func=arg_download)
 
     strip_parser = subparsers.add_parser('strip')
-    strip_parser.add_argument('--directory', dest='dir', required=True)
+    strip_parser.add_argument('--directory', required=True)
     strip_parser.set_defaults(func=arg_strip)
 
     encode_char_parser = subparsers.add_parser(
         'encode_char',
         help='Encode all transcripts for character-level models.'
     )
-    encode_char_parser.add_argument('--directory', dest='dir', required=True)
+    encode_char_parser.add_argument('--directory', required=True)
     encode_char_parser.set_defaults(func=arg_encode_char)
+
+    embed_word_parser = subparsers.add_parser(
+        'embed_word',
+        help='Encode all transcripts for word-level models.'
+    )
+    embed_word_parser.add_argument('--directory', required=True)
+    embed_word_parser.add_argument(
+        '--embed_directory',
+        required=True,
+        help='Directory in which to save encoded files (and in which `words.vec` has already been written.'
+    )
+    embed_word_parser.set_defaults(func=arg_embed_word)
 
     fasttext_prep_parser = subparsers.add_parser(
         'fasttext_prep',
@@ -382,20 +475,26 @@ def main():
     )
     fasttext_embed_parser.set_defaults(func=arg_fasttext_embed)
 
+    word_hierarchy_parser = subparsers.add_parser(
+        'word_hierarchy',
+        help='Determine a hierarchy of words'
+    )
+    word_hierarchy_parser.add_argument(
+        '--embedding_directory', required=True,
+        help='Directory containing `words.vec`'
+    )
+    word_hierarchy_parser.set_defaults(func=arg_word_hierarchy)
+
     train_word_parser = subparsers.add_parser(
         'train_word',
         help='Train a word level model based on embeddings constructed by fasttext.'
     )
     train_word_parser.add_argument(
-        '--directory', required=True,
-        help='Data directory containing transcript directories and word embeddings'
+        '--embedding_directory', required=True,
+        help='Directory containing transcript directories with encoded transcripts and word embeddings'
     )
     train_word_parser.add_argument(
-        '--embedding_file', required=True,
-        help='Filename in data directory of embeddings file'
-    )
-    train_word_parser.add_argument(
-        '--num_layers', required=True,
+        '--num_layers', type=int, default=1,
         help='How many LSTM layers to use.'
     )
     train_word_parser.add_argument(
@@ -426,6 +525,9 @@ def main():
         '--batch_size', type=int, default=10,
     )
     train_word_parser.add_argument(
+        '--chunk_size', required=True, type=int,
+    )
+    train_word_parser.add_argument(
         '--epochs', type=int, required=True,
         help='Number of training epochs'
     )
@@ -436,6 +538,10 @@ def main():
     train_word_parser.add_argument(
         '--learning_rate', type=float, default=0.001,
         help='Learning rate for Adam optimizer'
+    )
+    train_word_parser.add_argument(
+        '--epsilon', type=float, default=1e-4,
+        help='Epsilon parameter for Adam optimizer'
     )
     train_word_parser.set_defaults(func=arg_train_word)
 

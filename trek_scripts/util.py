@@ -35,4 +35,4 @@ def train_test_split(rand, suffix, data_directory, shows, test_proportion):
                 episodes.append(pathlib.Path(*child.parts[-2:]))
     test_size = int(test_proportion * len(episodes))
     test_episodes, train_episodes = select_from_list(rand, episodes, test_size)
-    return test_episodes, train_episodes
+    return train_episodes, test_episodes

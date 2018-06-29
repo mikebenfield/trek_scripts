@@ -1,5 +1,7 @@
 import pathlib
 
+import torch
+
 import trek_scripts.opts as opts
 
 def string_prep(s):
@@ -55,8 +57,8 @@ def read_embeddings_file(filename):
     '''Given a .vec file produced by fasttext, return a dict and a
     list containing the embeddings.
     
-    The dic will map word -> tensor, and the list will have the nth
-    word in the nth place.'''
+    The dict will map word -> index, and the list will have the nth
+    vector in the nth place.'''
 
     import numpy as np
     import torch
@@ -65,13 +67,49 @@ def read_embeddings_file(filename):
         lines = f.readlines()
     embeddings = {}
     lst = []
-    for line in lines[1:]:
+    for i, line in enumerate(lines[1:]):
         word, rest = line.split(' ', maxsplit=1)
         array = np.fromstring(rest, sep=' ')
         tensor = torch.from_numpy(array)
         if opts.cuda:
             tensor = tensor.cuda()
-        embeddings[word] = tensor
-        lst.append(word)
+        embeddings[word] = i
+        lst.append(tensor)
 
     return embeddings, lst
+
+def embed_directory(data_directory, embedding_directory,
+                    indices, vectors):
+    """For every .txt file in `data_directory`, write a .index
+    and a .vector file in `encoding_directory`.
+
+    `data_directory`: contains show directories with .txt files
+    `indices`: dict word -> index
+    `vectors`: map index -> tensor
+    """
+    path = pathlib.Path(data_directory)
+    for child in path.iterdir():
+        if child.suffix != '.txt':
+            continue
+        with open(child) as f:
+            text = f.read()
+        text = string_prep(text)
+        words = text.split(' ')
+        # remove empty strings
+        words = [word for word in words if word]
+
+        text_indices = torch.zeros([len(words)], dtype=torch.long)
+        text_vectors = torch.zeros([len(words), len(vectors[0])])
+
+        for i, word in enumerate(words):
+            index = indices[word]
+            text_indices[i] = index
+            text_vectors[i] = vectors[index]
+
+        filename_indices = child.name[:-4] + '.indices'
+        filepath_indices = pathlib.Path(embedding_directory, filename_indices)
+        torch.save(text_indices, filepath_indices)
+
+        filename_vectors = child.name[:-4] + '.vectors'
+        filepath_vectors = pathlib.Path(embedding_directory, filename_vectors)
+        torch.save(text_vectors, filepath_vectors)
