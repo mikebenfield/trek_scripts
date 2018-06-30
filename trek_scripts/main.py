@@ -226,7 +226,9 @@ def arg_embed_word(args):
     directory = args.directory
     embed_directory = args.embed_directory
     embedding_path = pathlib.Path(embed_directory, 'words.vec')
+    nodes_path = pathlib.Path(embed_directory, 'words.nodes')
     indices, vectors  = fasttext.read_embeddings_file(embedding_path)
+    _, nodes = fasttext.read_nodes_file(nodes_path)
 
     for show in ['TOS', 'TNG', 'DS9', 'VOY', 'ENT']:
         show_dir = pathlib.Path(directory, show)
@@ -235,7 +237,7 @@ def arg_embed_word(args):
             os.mkdir(dest_dir)
         except FileExistsError:
             pass
-        fasttext.embed_directory(show_dir, dest_dir, indices, vectors)
+        fasttext.embed_directory(show_dir, dest_dir, indices, vectors, nodes)
 
 def arg_train_word(args):
     import numpy as np
@@ -265,23 +267,15 @@ def arg_train_word(args):
     dropout = args.dropout
     batch_size = args.batch_size
 
-    class_file = pathlib.Path(directory, 'words.hierarchy')
-
-    with open(class_file) as f:
-        lines = f.readlines()
-    classes = [line.split(' ', maxsplit=1)[1] for line in lines]
-    for i, string in enumerate(classes):
-        array = np.fromstring(string, sep=' ', dtype=np.int_)
-        classes[i] = torch.from_numpy(array)
-        if opts.cuda:
-            classes[i] = classes[i].cuda()
-
-    max_class = max(len(clas) for clas in classes)
+    _, nodes = fasttext.read_embeddings_file(pathlib.Path(directory, 'words.nodes'))
+    
     tensor = torch.load(pathlib.Path(directory, 'TOS', '001.vectors'))
+    height = max(len(node) for node in nodes)
     model = word.WordRnn(len(tensor[0]),
                          hidden_size=hidden_size,
                          num_layers=num_layers,
-                         output_size=max_class)
+                         top_layer_size=256,
+                         hierarchy_depth=height)
 
     optimizer = optim.Adam(
         model.parameters(),
@@ -296,6 +290,7 @@ def arg_train_word(args):
         shows,
         args.test_size)
 
+    train_episodes = [pathlib.Path("TOS", "000.txt")]
     train_episodes = [pathlib.Path(directory, ep) for ep in train_episodes]
     test_episodes = [pathlib.Path(directory, ep) for ep in test_episodes]
 
@@ -303,7 +298,7 @@ def arg_train_word(args):
 
     word.full_train(model, optimizer, rand,
                     args.epochs, train_episodes, test_episodes,
-                    classes, args.batch_size, args.chunk_size,
+                    args.batch_size, args.chunk_size,
                     word_map, args.model_directory)
 
 
@@ -377,29 +372,32 @@ def arg_fasttext_embed(args):
                     '-epoch', epochs],
                    check=True)
 
-def arg_word_hierarchy(args):
+def arg_word_nodes(args):
     import torch
+    import numpy as np
 
     directory = args.embedding_directory
     filename = pathlib.Path(directory, 'words.vec')
     dct, lst = fasttext.read_embeddings_file(filename)
 
-    size = len(dct[lst[0]])
-    array = torch.zeros([len(lst), size])
-    for i, word in enumerate(lst):
-        array[i] = lst[dct[word]]
+    size = len(lst[0])
+    array = np.zeros([len(lst), size])
+    for i, tensor in enumerate(lst):
+        array[i, :] = tensor.numpy()
 
-    array = array.numpy()
+    strings = [0 for _ in lst]
+    for key in dct:
+        strings[dct[key]] = key
 
     result_list = hierarchy.word_hierarchy(array)
 
-    dest_file = pathlib.Path(directory, 'words.hierarchy')
+    dest_file = pathlib.Path(directory, 'words.nodes')
     with open(dest_file, 'w') as f:
-        for word, classes in zip(lst, result_list):
-            f.write(word)
+        for j, nodes in enumerate(result_list):
+            f.write(strings[j])
             f.write(' ')
-            f.write(str(classes[0]))
-            for i in classes[1:]:
+            f.write(str(nodes[0]))
+            for i in nodes[1:]:
                 f.write(' ')
                 f.write(str(i))
             f.write('\n')
@@ -475,15 +473,15 @@ def main():
     )
     fasttext_embed_parser.set_defaults(func=arg_fasttext_embed)
 
-    word_hierarchy_parser = subparsers.add_parser(
-        'word_hierarchy',
+    word_nodes_parser = subparsers.add_parser(
+        'word_nodes',
         help='Determine a hierarchy of words'
     )
-    word_hierarchy_parser.add_argument(
+    word_nodes_parser.add_argument(
         '--embedding_directory', required=True,
         help='Directory containing `words.vec`'
     )
-    word_hierarchy_parser.set_defaults(func=arg_word_hierarchy)
+    word_nodes_parser.set_defaults(func=arg_word_nodes)
 
     train_word_parser = subparsers.add_parser(
         'train_word',
