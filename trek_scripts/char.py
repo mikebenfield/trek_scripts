@@ -261,15 +261,15 @@ def full_train(
 
         total_test_loss = 0
 
-        for test_batch in batch_iter(rand, args.batch_size, test_paths):
+        for test_batch in batch_iter(rand, batch_size, test_paths):
             tensors = [torch.load(ep) for ep in test_batch]
             if opts.cuda:
                 tensors = [tensor.cuda() for tensor in tensors]
-            loss = learn.test(model, loss_f, tensors)
+            loss = test(model, loss_f, tensors)
             total_test_loss += len(tensors) * loss
         average_test_loss = total_test_loss / len(test_episodes)
         print('average test loss for epoch {}: {}'.format(epoch, average_test_loss))
         print('saving model for epoch {}'.format(epoch))
-        path = pathlib.Path(args.model_directory, 'model_{:0>4}'.format(epoch))
+        path = pathlib.Path(model_directory, 'model_{:0>4}'.format(epoch))
 
         torch.save(model, path)

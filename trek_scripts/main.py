@@ -274,7 +274,7 @@ def arg_train_word(args):
     model = word.WordRnn(len(tensor[0]),
                          hidden_size=hidden_size,
                          num_layers=num_layers,
-                         top_layer_size=256,
+                         top_layer_size=50,
                          hierarchy_depth=height)
 
     optimizer = optim.Adam(
@@ -290,7 +290,8 @@ def arg_train_word(args):
         shows,
         args.test_size)
 
-    train_episodes = [pathlib.Path("TOS", "000.txt")]
+    # train_episodes = [pathlib.Path("TOS", "000.txt")]
+    # test_episodes = [pathlib.Path("TOS", "000.txt")]
     train_episodes = [pathlib.Path(directory, ep) for ep in train_episodes]
     test_episodes = [pathlib.Path(directory, ep) for ep in test_episodes]
 

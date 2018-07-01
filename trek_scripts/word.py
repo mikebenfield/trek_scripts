@@ -1,4 +1,6 @@
 
+import pathlib
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -21,7 +23,7 @@ class WordMap:
     @staticmethod
     def from_directory(directory):
         """Given a directory in which are found a `words.vec` file
-        and a `words.hierarchy` file, produce a `WordMap`.
+        and a `words.nodes` file, produce a `WordMap`.
         """
         import pathlib
 
@@ -46,7 +48,7 @@ class WordMap:
             indices[word] = i
             vectors[i] = tensor
 
-        class_file = pathlib.Path(directory, 'words.hierarchy')
+        class_file = pathlib.Path(directory, 'words.nodes')
 
         with open(class_file) as f:
             lines = f.readlines()
@@ -137,9 +139,13 @@ class WordRnn(nn.Module):
         self.hierarchy_depth = hierarchy_depth
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
                             num_layers=num_layers, batch_first=True)
-        self.linear_x = nn.Linear(hidden_size, top_layer_size)
-        self.linear_w = nn.Linear(2 * hierarchy_depth - 2, top_layer_size)
-        self.linear_final = nn.Linear(top_layer_size, 1)
+        self.linear1 = nn.Linear(hidden_size + 2 * hierarchy_depth - 2, 256)
+        self.linear2 = nn.Linear(256, 256)
+        self.linear3 = nn.Linear(256, 1)
+        # self.linear_x = nn.Linear(hidden_size, top_layer_size)
+        # self.linear_w = nn.Linear(2 * hierarchy_depth - 2, top_layer_size)
+        # self.bilinear = nn.Bilinear(hidden_size, 2 * hierarchy_depth - 2, top_layer_size, bias=False)
+        # self.linear_final = nn.Linear(top_layer_size, 1)
 
     def forward(self, classes, x, hidden=None, full=True):
         sz = x.size()
@@ -148,19 +154,33 @@ class WordRnn(nn.Module):
         sz = x.size()
         x = x.view(sz[0], sz[2])
         if full:
-            results = [] * self.hierarchy_depth
+            results = []
             for i in range(0, 2*self.hierarchy_depth, 2):
                 classes_ = classes.clone()
-                classes_[i:] = 0
-                y = self.linear_x(x) + self.linear_w(classes_)
+                classes_[:, i:] = 0
+                y = torch.cat([x, classes_], dim=-1)
+                y = self.linear1(y)
                 y = F.relu(y)
-                y = self.linear_final(y)
+                y = self.linear2(y)
+                y = F.relu(y)
+                y = self.linear3(y)
+                # y = self.linear_x(x) + self.bilinear(x, classes_)
+                # y = self.linear_x(x) + self.linear_w(classes_)
+                # y = F.relu(y)
+                # y = self.linear_final(y)
                 results.append(y)
             return torch.cat(results, dim=-1), hidden
         else:
-            x = self.linear_x(x) + self.linear_w(classes)
+            x = torch.cat([x, classes], dim=-1)
+            x = self.linear1(x)
             x = F.relu(x)
-            x = self.linear_final(x)
+            x = self.linear2(x)
+            x = F.relu(x)
+            x = self.linear3(x)
+            # x = self.linear_x(x) + self.bilinear(x, classes)
+            # # x = self.linear_x(x) + self.linear_w(classes)
+            # x = F.relu(x)
+            # x = self.linear_final(x)
             return x, hidden
 
 def cross_entropy_loss1(prediction, classes):
@@ -174,40 +194,65 @@ def cross_entropy_loss2(prediction, nodes):
     sz[-1] /= 2
     sz.append(2)
     nodes = nodes.view(*sz)
-    loss1 = torch.log(1 + torch.exp(prediction))
-    loss2 = torch.log(1 + torch.exp(-prediction))
-    loss = nodes[..., 0] * loss1 + nodes[..., 1] * loss2
+    sign = torch.empty(sz)
+    sign = nodes[..., 0] - nodes[..., 1]
+    loss = torch.log(1 + torch.exp(sign * prediction))
     return loss.mean(dim=-1).mean(dim=-1)
 
 def hallucinate(model, max_len, word_map, rand):
     model.eval()
-    output = []
-
-    last_index = word_map.index('~')
-    final = word_map.index('@')
+    output = ['~']
 
     hidden = None
 
-    output = []
+    # lst = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0]
+    # tensor = torch.tensor(lst, dtype=torch.float)
+    # nodes_tensor = torch.zeros([1, 2 * word_map.longest_tuple() - 2])
+    # for i in range(len(lst)):
+    #     inp = word_map.vector(output[-1])
+    #     inp = inp.view(1, -1)
+    #     out, _ = model(nodes_tensor, inp, hidden, False)
+    #     print('classes is ', nodes_tensor)
+    #     print('output is', out[0,0].item())
+    #     print('prob is', 1 / (1 + np.exp(-out[0,0].item())))
+    #     if i < len(lst) - 1:
+    #         nodes_tensor[0, 2*i + lst[i]] = 1
+    # return
+
+
 
     for _ in range(max_len):
-        inp = torch.zeros([1, word_map.dim()])
+        inp = word_map.vector(output[-1])
+        inp = inp.view(1, -1)
+        nodes = []
+        nodes_tensor = torch.zeros([1, 2 * word_map.longest_tuple() - 2])
         if opts.cuda:
-            inp = inp.cuda()
-        inp[0, :] = word_map.vector(last_index)
-        out, hidden = model(inp, hidden)
-        nparray = out[0].detach().cpu().numpy()
-        probabilities = 1 / (1 + np.exp(-nparray))
-        classes = [rand.choice(2, p=np.array([1-p, p])) for p in probabilities]
-        for i in range(len(classes)):
-            tupl = tuple(classes[:i])
+            nodes_tensor = nodes_tensor.cuda()
+        while True:
+            out, hidden_ = model(nodes_tensor, inp, hidden, False)
+            val = out[0,0].item()
+            prob = 1 / (1 + np.exp(-val))
+            val = rand.uniform()
+            if output[-1] == '~':
+                print('prob val', prob, val, nodes)
+            if val <= prob:
+                nodes.append(1)
+            else:
+                nodes.append(0)
             try:
-                word = word_map.string(tupl)
+                word = word_map.string(tuple(nodes))
+                if output[-1] == '~':
+                    print('appendi ', word)
+                    print(tuple(nodes))
                 output.append(word)
                 break
             except KeyError:
                 pass
-    print(len(output))
+            nodes_tensor[0, 2 * len(nodes) - 2 + nodes[-1]] = 1
+        hidden = hidden_
+        if output[-1] == '@':
+            break
+
     return ' '.join(output)
         
 
@@ -305,6 +350,22 @@ def train(
     denominator = (size[0] - 1) * size[1]
     return total_loss / denominator
 
+def test(model, transcripts_nodes, transcripts_vectors):
+    nodes, vectors = _format_tensors(1, transcripts_nodes, transcripts_vectors)
+    model.eval()
+
+    last_hidden = None
+
+    total_loss = 0
+
+    for i in range(0, len(nodes) - 1):
+        if not last_hidden is None:
+            last_hidden = (last_hidden[0].detach(), last_hidden[1].detach())
+        output, last_hidden = model(nodes[i+1, :, :-2], vectors[i], last_hidden)
+        total_loss += cross_entropy_loss2(output, nodes[i+1]).item()
+
+    return total_loss / (len(nodes) - 1)
+
 
 def full_train(
     model,
@@ -323,7 +384,6 @@ def full_train(
 
         total_train_loss = 0
         for i, train_batch in enumerate(batch_iter(rand, batch_size, train_episodes)):
-            print('Batch {}'.format(i))
             as_nodes = [torch.load(ep.with_suffix('.nodes')) for ep in train_batch]
             as_vectors = [torch.load(ep.with_suffix('.vectors')) for ep in train_batch]
 
@@ -331,11 +391,28 @@ def full_train(
                 as_nodes = [tensor.cuda() for tensor in as_nodes]
                 as_vectors = [tensor.cuda() for tensor in as_vectors]
 
-            print('ok')
-
             loss = train(model, optimizer,
                          chunk_size, as_nodes, as_vectors)
-            print('loss ', loss)
-            total_train_loss += loss
-        print('total loss', total_train_loss)
-            # print(hallucinate(model, 500, word_map, rand))
+            print('Batch {}, loss {}'.format(i, loss))
+            total_train_loss += len(as_nodes) * loss
+
+        total_test_loss = 0
+        for test_batch in batch_iter(rand, batch_size, test_episodes):
+            as_nodes = [torch.load(ep.with_suffix('.nodes')) for ep in test_batch]
+            as_vectors = [torch.load(ep.with_suffix('.vectors')) for ep in test_batch]
+            if opts.cuda:
+                as_nodes = [tensor.cuda() for tensor in as_nodes]
+                as_vectors = [tensor.cuda() for tensor in as_vectors]
+            loss = test(model, as_nodes, as_vectors)
+            total_test_loss += len(as_nodes) * loss
+
+        average_test_loss = total_test_loss / len(test_episodes)
+        average_train_loss = total_train_loss / len(train_episodes)
+
+        print('mean training loss for epoch {}: {}'.format(epoch, average_train_loss))
+        print('mean testing loss for epoch {}: {}'.format(epoch, average_test_loss))
+
+        text = hallucinate(model, 100, word_map, rand)
+        print(text)
+        path = pathlib.Path(model_directory, 'model_{:0>4}'.format(epoch))
+        torch.save(model, path)
