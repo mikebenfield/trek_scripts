@@ -15,6 +15,12 @@ from trek_scripts.util import batch_iter
 
 
 class CharRnnTop(nn.Module):
+    """
+    RNN based on GRU for learning character based models.
+
+    Has a `Top`, by which I mean an additional linear layer at the end.
+    """
+
     def __init__(self, io_size, hidden_size, layer_size, num_layers):
         super().__init__()
         self.io_size = io_size
@@ -38,6 +44,12 @@ class CharRnnTop(nn.Module):
 
 
 class CharRnnNoTop(nn.Module):
+    """
+    RNN based on GRU for learning character based models.
+
+    No `Top`, by which I mean no additional linear layer at the end.
+    """
+
     def __init__(self, io_size, hidden_size, num_layers):
         super().__init__()
         self.io_size = io_size
@@ -60,35 +72,43 @@ class CharRnnNoTop(nn.Module):
 N_CODEPOINTS = 91
 
 
-def code_to_char(index):
-    if index == 0:
+def code_to_char(code):
+    """
+    Given a character code from 0 to 90 according to my scheme, yield the
+    corresponding character.
+    """
+    if code == 0:
         return '\n'
-    if 1 <= index <= 3:
-        return chr(index + 0x1F)
-    if 4 <= index <= 88:
-        return chr(index + 0x22)
-    if index == N_CODEPOINTS - 2:
+    if 1 <= code <= 3:
+        return chr(code + 0x1F)
+    if 4 <= code <= 88:
+        return chr(code + 0x22)
+    if code == N_CODEPOINTS - 2:
         # beginning of file
         return '~'
-    if index == N_CODEPOINTS - 1:
+    if code == N_CODEPOINTS - 1:
         # end of file
         return '@'
-    raise ValueError('Invalid index: {}'.format(index))
+    raise ValueError('Invalid code: {}'.format(code))
 
 
 def char_to_code(char):
-    code = ord(char)
-    if code == 0xA:
+    """
+    Given a character, return its code point according to my scheme.
+    """
+    ascii_code = ord(char)
+    if ascii_code == 0xA:
         return 0
-    if 0x20 <= code <= 0x22:
-        return code - 0x1F
-    if 0x26 <= code <= 0x7A:
-        return code - 0x22
+    if 0x20 <= ascii_code <= 0x22:
+        return ascii_code - 0x1F
+    if 0x26 <= ascii_code <= 0x7A:
+        return ascii_code - 0x22
     if char == '~':
         return N_CODEPOINTS - 2
     if char == '@':
         return N_CODEPOINTS - 1
-    raise ValueError('Invalid char: {} with codepoint {}'.format(char, code))
+    raise ValueError('Invalid char: {} with ascii_codepoint {}'.format(
+        char, ascii_code))
 
 
 def encode_string(string):
@@ -219,6 +239,8 @@ def train(model, loss_f, optimizer, chunk_size, tensors):
 
 
 def hallucinate(model, max_len, rand):
+    """Given a trained model, create a script of at most `max_len`
+    characters."""
     import numpy as np
 
     import trek_scripts.strings as strings
@@ -258,6 +280,12 @@ def full_train(
         chunk_size,
         loss_f,
         model_directory, ):
+    """
+    Train the character-level model for the given number of epochs.
+
+    After each epoch, the model will be saved in `model_directory` and a small
+    sample hallucinated script will be printed to the screen.
+    """
     for epoch in range(epochs):
         print('Beginning epoch{}'.format(epoch))
 

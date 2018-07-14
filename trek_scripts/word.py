@@ -12,7 +12,7 @@ from trek_scripts.util import batch_iter
 
 class WordMap:
     """Maps between the various representations of words.
-    
+
     Specifically, a word has 4 representations:
     - a string
     - an integer index
@@ -136,8 +136,26 @@ class WordMap:
 
 
 class WordRnn(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, top_layer_size,
-                 hierarchy_depth):
+    """Word-level model.
+
+    The model works like this: the last word embedding `x` and previous `hidden`
+    output go into an LSTM: `output, new_hidden = LSTM(x, hidden)`. The other
+    input is `classes`. Maybe this would be better called `clusters`. But in any
+    case, it's the sequence of 0s and 1s that defines the hierarchy of clusters
+    into which the word being predicted falls.
+    """
+
+    def __init__(self, input_size, hidden_size, num_layers, hierarchy_depth):
+        """
+        Create a word-level model.
+
+        `hidden_size` and `num_layers` refer to the LSTM cells.
+
+        `input_size` is the dimension of the word embedding.
+
+        `hierarchy_depth` refers to the dimension of the cluster
+        hierarchy.
+        """
         super().__init__()
 
         self.hierarchy_depth = hierarchy_depth
@@ -224,7 +242,6 @@ def hallucinate(model, max_len, word_map, rand):
             try:
                 word = word_map.string(tuple(nodes))
                 if output[-1] == '~':
-                    print('appendi ', word)
                     print(tuple(nodes))
                 output.append(word)
                 break
@@ -364,6 +381,12 @@ def full_train(
         chunk_size,
         word_map,
         model_directory, ):
+    """
+    Train the word-level model for the given number of epochs.
+
+    After each epoch, the model will be saved in `model_directory` and a small
+    sample hallucinated script will be printed to the screen.
+    """
     for epoch in range(epochs):
         print('Beginning epoch {}'.format(epoch))
 

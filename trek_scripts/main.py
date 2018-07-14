@@ -288,7 +288,6 @@ def arg_train_word(args):
         len(tensor[0]),
         hidden_size=hidden_size,
         num_layers=num_layers,
-        top_layer_size=50,
         hierarchy_depth=height)
 
     optimizer = optim.Adam(
