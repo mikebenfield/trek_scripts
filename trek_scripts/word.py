@@ -145,7 +145,8 @@ class WordRnn(nn.Module):
     into which the word being predicted falls.
     """
 
-    def __init__(self, input_size, hidden_size, num_layers, hierarchy_depth):
+    def __init__(self, input_size, hidden_size, num_layers, hierarchy_depth,
+                 dropout):
         """
         Create a word-level model.
 
@@ -163,7 +164,8 @@ class WordRnn(nn.Module):
             input_size=input_size,
             hidden_size=hidden_size,
             num_layers=num_layers,
-            batch_first=True)
+            batch_first=True,
+            dropout=dropout)
         self.linear1 = nn.Linear(hidden_size + 2 * hierarchy_depth - 2, 256)
         self.linear2 = nn.Linear(256, 256)
         self.linear3 = nn.Linear(256, 1)

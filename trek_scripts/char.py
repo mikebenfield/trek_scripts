@@ -21,13 +21,14 @@ class CharRnnTop(nn.Module):
     Has a `Top`, by which I mean an additional linear layer at the end.
     """
 
-    def __init__(self, io_size, hidden_size, layer_size, num_layers):
+    def __init__(self, io_size, hidden_size, layer_size, num_layers, dropout):
         super().__init__()
         self.io_size = io_size
         self.gru = nn.GRU(io_size,
                           hidden_size,
                           num_layers=num_layers,
-                          batch_first=True)
+                          batch_first=True,
+                          dropout=dropout)
         self.linear1 = nn.Linear(hidden_size, layer_size)
         self.linear2 = nn.Linear(layer_size, io_size)
 
@@ -50,13 +51,14 @@ class CharRnnNoTop(nn.Module):
     No `Top`, by which I mean no additional linear layer at the end.
     """
 
-    def __init__(self, io_size, hidden_size, num_layers):
+    def __init__(self, io_size, hidden_size, num_layers, dropout):
         super().__init__()
         self.io_size = io_size
         self.gru = nn.GRU(io_size,
                           hidden_size,
                           num_layers=num_layers,
-                          batch_first=True)
+                          batch_first=True,
+                          dropout=dropout)
         self.linear1 = nn.Linear(hidden_size, io_size)
 
     def forward(self, x, hidden=None):

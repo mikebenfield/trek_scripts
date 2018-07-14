@@ -288,7 +288,8 @@ def arg_train_word(args):
         len(tensor[0]),
         hidden_size=hidden_size,
         num_layers=num_layers,
-        hierarchy_depth=height)
+        hierarchy_depth=height,
+        dropout=args.dropout)
 
     optimizer = optim.Adam(
         model.parameters(), lr=args.learning_rate, eps=args.epsilon)
@@ -324,9 +325,10 @@ def arg_train_char(args):
         rand, '.encode', args.directory, shows, args.test_size)
     if args.model_name == 'top':
         model = char.CharRnnTop(91, args.hidden_size, args.layer_size,
-                                args.num_layers)
+                                args.num_layers, args.dropout)
     else:
-        model = char.CharRnnNoTop(91, args.hidden_size, args.num_layers)
+        model = char.CharRnnNoTop(91, args.hidden_size, args.num_layers,
+                                  args.dropout)
 
     optimizer = optim.Adam(
         model.parameters(), lr=args.learning_rate, eps=args.epsilon)
@@ -558,6 +560,11 @@ def main():
         '--shows',
         default='TOS,TNG,DS9,VOY,ENT',
         help='Comma separated list of series to train on')
+    train_word_parser.add_argument(
+        '--dropout',
+        type=float,
+        default=0.0,
+        help='Dropout probability (0 for no dropout)')
     train_char_parser.add_argument(
         '--hidden_size',
         type=int,
