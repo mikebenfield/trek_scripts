@@ -4,6 +4,8 @@ Testing and training functions accept `tensors` arguments that are
 lists of encoded 1-D tensors indexed by string index.
 """
 
+import pathlib
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -11,11 +13,15 @@ import torch.nn.functional as F
 import trek_scripts.opts as opts
 from trek_scripts.util import batch_iter
 
+
 class CharRnnTop(nn.Module):
     def __init__(self, io_size, hidden_size, layer_size, num_layers):
         super().__init__()
         self.io_size = io_size
-        self.gru = nn.GRU(io_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.gru = nn.GRU(io_size,
+                          hidden_size,
+                          num_layers=num_layers,
+                          batch_first=True)
         self.linear1 = nn.Linear(hidden_size, layer_size)
         self.linear2 = nn.Linear(layer_size, io_size)
 
@@ -30,11 +36,15 @@ class CharRnnTop(nn.Module):
         sz = x.size()
         return (x.view(sz[0], sz[2]), hidden)
 
+
 class CharRnnNoTop(nn.Module):
     def __init__(self, io_size, hidden_size, num_layers):
         super().__init__()
         self.io_size = io_size
-        self.gru = nn.GRU(io_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.gru = nn.GRU(io_size,
+                          hidden_size,
+                          num_layers=num_layers,
+                          batch_first=True)
         self.linear1 = nn.Linear(hidden_size, io_size)
 
     def forward(self, x, hidden=None):
@@ -46,7 +56,9 @@ class CharRnnNoTop(nn.Module):
         sz = x.size()
         return (x.view(sz[0], sz[2]), hidden)
 
+
 N_CODEPOINTS = 91
+
 
 def code_to_char(index):
     if index == 0:
@@ -63,6 +75,7 @@ def code_to_char(index):
         return '@'
     raise ValueError('Invalid index: {}'.format(index))
 
+
 def char_to_code(char):
     code = ord(char)
     if code == 0xA:
@@ -72,10 +85,11 @@ def char_to_code(char):
     if 0x26 <= code <= 0x7A:
         return code - 0x22
     if char == '~':
-        return N_CODEPOINTS-2
+        return N_CODEPOINTS - 2
     if char == '@':
-        return N_CODEPOINTS-1
+        return N_CODEPOINTS - 1
     raise ValueError('Invalid char: {} with codepoint {}'.format(char, code))
+
 
 def encode_string(string):
     encoded = torch.zeros([len(string)], dtype=torch.long)
@@ -83,11 +97,10 @@ def encode_string(string):
         encoded[i] = char_to_code(string[i])
     return encoded
 
+
 def encode_directory(directory):
     '''For every .txt file in this directory, write
     a .encode file according to our scheme.'''
-    import pathlib
-
     path = pathlib.Path(directory)
     for child in path.iterdir():
         if child.suffix != '.txt':
@@ -99,13 +112,14 @@ def encode_directory(directory):
         new_file_name = child.with_suffix('.encode')
         torch.save(tensor, new_file_name)
 
+
 def _format_tensors(chunk_size, tensors):
     """Take the list `tensors` of 1-D tensors and put them into a
     format appropriate for training.
 
     `tensors` is a list of 1-D tensors, each of which is a sequence of
-    codepoints encoding a transcript. The result is 
-    
+    codepoints encoding a transcript. The result is
+
     `onehot, encoded`
 
     `encoded` is a 2-D tensor of shape `(transcript_len, batch_size)`, where
@@ -113,7 +127,7 @@ def _format_tensors(chunk_size, tensors):
     smallest integer at least as large as every tensor and
     such that `transcript_len % chunk_size == 1`.
     The excess codepoints are filled in with the code for `@`.
-    
+
     `onehot` is similar, but it's a 3-D tensor of shape
     `(transcript_len, batch_size, N_CODEPOINTS)`. `onehot[i, j]` is the onehot
     encoding of `encoding[i, j]`.
@@ -144,6 +158,7 @@ def _format_tensors(chunk_size, tensors):
 
     return onehot, encoded
 
+
 def test(model, loss_f, tensors):
     """Return the average loss suffered as `model` tries to predict
     each character.
@@ -161,12 +176,13 @@ def test(model, loss_f, tensors):
 
     total_loss = 0
     for i in range(0, len(encoded) - 1):
-        if not last_hidden is None:
+        if last_hidden is not None:
             last_hidden = last_hidden.detach()
         output, last_hidden = model(onehot[i, :, :], last_hidden)
-        total_loss += loss_f(output, encoded[i+1]).item()
+        total_loss += loss_f(output, encoded[i + 1]).item()
 
     return total_loss / (len(encoded) - 1)
+
 
 def train(model, loss_f, optimizer, chunk_size, tensors):
     """Train the model on `tensors`.
@@ -185,7 +201,7 @@ def train(model, loss_f, optimizer, chunk_size, tensors):
 
     total_loss = 0
     for i in range(0, len(encoded) - 1, chunk_size):
-        if not last_hidden is None:
+        if last_hidden is not None:
             last_hidden = last_hidden.detach()
         optimizer.zero_grad()
         loss = torch.zeros([1], requires_grad=True)
@@ -194,15 +210,18 @@ def train(model, loss_f, optimizer, chunk_size, tensors):
         for j in range(i, i + chunk_size):
             output, last_hidden = model(onehot[j, :, :], last_hidden)
             loss = loss.clone()
-            new_loss = loss_f(output, encoded[j+1])
+            new_loss = loss_f(output, encoded[j + 1])
             loss += new_loss
         total_loss += loss.item()
         loss.backward()
         optimizer.step()
     return total_loss / (len(encoded) - 1)
 
+
 def hallucinate(model, max_len, rand):
     import numpy as np
+
+    import trek_scripts.strings as strings
 
     model.eval()
     output = []
@@ -227,28 +246,28 @@ def hallucinate(model, max_len, rand):
 
     return ''.join(output)
 
+
 def full_train(
-    model,
-    optimizer,
-    rand,
-    epochs,
-    train_episodes,
-    test_episodes,
-    batch_size,
-    chunk_size,
-    loss_f,
-    model_directory,
-):
+        model,
+        optimizer,
+        rand,
+        epochs,
+        train_episodes,
+        test_episodes,
+        batch_size,
+        chunk_size,
+        loss_f,
+        model_directory, ):
     for epoch in range(epochs):
         print('Beginning epoch{}'.format(epoch))
 
         total_train_loss = 0
-        for i, train_batch in enumerate(batch_iter(rand, batch_size, train_episodes)):
+        for i, train_batch in enumerate(
+                batch_iter(rand, batch_size, train_episodes)):
             tensors = [torch.load(ep) for ep in train_batch]
             if opts.cuda:
                 tensors = [tensor.cuda() for tensor in tensors]
-            loss = train(model, loss_f, optimizer,
-                         chunk_size, tensors)
+            loss = train(model, loss_f, optimizer, chunk_size, tensors)
             print('batch {}; loss {}'.format(i, loss))
             total_train_loss += len(tensors) * loss
 
@@ -257,18 +276,20 @@ def full_train(
         print('')
 
         average_loss = total_train_loss / len(train_episodes)
-        print('average training loss for epoch {}: {}'.format(epoch, average_loss))
+        print('average training loss for epoch {}: {}'.format(epoch,
+                                                              average_loss))
 
         total_test_loss = 0
 
-        for test_batch in batch_iter(rand, batch_size, test_paths):
+        for test_batch in batch_iter(rand, batch_size, test_episodes):
             tensors = [torch.load(ep) for ep in test_batch]
             if opts.cuda:
                 tensors = [tensor.cuda() for tensor in tensors]
             loss = test(model, loss_f, tensors)
             total_test_loss += len(tensors) * loss
         average_test_loss = total_test_loss / len(test_episodes)
-        print('average test loss for epoch {}: {}'.format(epoch, average_test_loss))
+        print('average test loss for epoch {}: {}'.format(epoch,
+                                                          average_test_loss))
         print('saving model for epoch {}'.format(epoch))
         path = pathlib.Path(model_directory, 'model_{:0>4}'.format(epoch))
 

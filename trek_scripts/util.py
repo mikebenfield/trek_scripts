@@ -12,6 +12,7 @@ def select_from_list(rand, lst, count):
             others.append(item)
     return (selected, others)
 
+
 def batch_iter(rand, batch_size, lst):
     visited = []
     not_visited = lst
@@ -20,6 +21,7 @@ def batch_iter(rand, batch_size, lst):
         visited += use
         (use, not_visited) = select_from_list(rand, not_visited, batch_size)
         yield use
+
 
 def train_test_split(rand, suffix, data_directory, shows, test_proportion):
     '''Returns (train_episodes, test_episodes).

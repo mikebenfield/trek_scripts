@@ -1,4 +1,3 @@
-
 import argparse
 import html
 import os
@@ -14,10 +13,12 @@ from trek_scripts import util
 from trek_scripts import fasttext
 from trek_scripts import hierarchy
 
+
 def die(msg):
     import sys
     print(msg)
     sys.exit(1)
+
 
 def download_show(url, url_directory, start_n, last_n, destination,
                   pad_leading_zeros):
@@ -46,14 +47,21 @@ def download_show(url, url_directory, start_n, last_n, destination,
             # found
             pass
 
+
 def download(url, directory):
     if not url.endswith('/'):
         url += '/'
-    download_show(url, "StarTrek", 1, 79, pathlib.PurePath(directory, "TOS"), False)
-    download_show(url, "NextGen", 101, 277, pathlib.PurePath(directory, "TNG"), False)
-    download_show(url, "DS9", 401, 575, pathlib.PurePath(directory, "DS9"), False)
-    download_show(url, "Voyager", 101, 722, pathlib.PurePath(directory, "VOY"), False)
-    download_show(url, "Enterprise", 1, 98, pathlib.PurePath(directory, "ENT"), True)
+    download_show(url, "StarTrek", 1, 79,
+                  pathlib.PurePath(directory, "TOS"), False)
+    download_show(url, "NextGen", 101, 277,
+                  pathlib.PurePath(directory, "TNG"), False)
+    download_show(url, "DS9", 401, 575,
+                  pathlib.PurePath(directory, "DS9"), False)
+    download_show(url, "Voyager", 101, 722,
+                  pathlib.PurePath(directory, "VOY"), False)
+    download_show(url, "Enterprise", 1, 98,
+                  pathlib.PurePath(directory, "ENT"), True)
+
 
 def strip_html(directory):
     '''For each file .html file in this directory, create a .txt version
@@ -159,7 +167,9 @@ def strip_html(directory):
             # remove empty lines
             lines = text.split('\n')
 
-            lines = [line for line in lines if not regex_space_only.match(line)]
+            lines = [
+                line for line in lines if not regex_space_only.match(line)
+            ]
             # remove leading spaces
             lines = [regex_trailing_space.sub('', line) for line in lines]
             lines = [regex_leading_space.sub('', line) for line in lines]
@@ -195,18 +205,22 @@ def strip_html(directory):
                     f.write(line)
                     f.write('\n')
 
+
 def arg_download(args):
     download(args.url, args.directory)
+
 
 def arg_strip(args):
     for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
         path = pathlib.PurePath(args.directory, name)
         strip_html(path)
 
+
 def arg_encode_char(args):
     for name in ["TOS", "TNG", "DS9", "VOY", "ENT"]:
         path = pathlib.PurePath(args.directory, name)
         char.encode_directory(path)
+
 
 def arg_hallucinate(args):
     import torch
@@ -217,17 +231,22 @@ def arg_hallucinate(args):
     hidden_size = dict_['hidden_size']
     layer_size = dict_['layer_size']
     num_layers = dict_['num_layers']
-    model = learn.CharRnn(91, hidden_size=hidden_size, layer_size=layer_size, num_layers=num_layers)
+    model = learn.CharRnn(
+        91,
+        hidden_size=hidden_size,
+        layer_size=layer_size,
+        num_layers=num_layers)
     model.load_state_dict(dict_['model'])
     s = learn.hallucinate(model, args.max_len, rand)
     print(s)
-    
+
+
 def arg_embed_word(args):
     directory = args.directory
     embed_directory = args.embed_directory
     embedding_path = pathlib.Path(embed_directory, 'words.vec')
     nodes_path = pathlib.Path(embed_directory, 'words.nodes')
-    indices, vectors  = fasttext.read_embeddings_file(embedding_path)
+    indices, vectors = fasttext.read_embeddings_file(embedding_path)
     _, nodes = fasttext.read_nodes_file(nodes_path)
 
     for show in ['TOS', 'TNG', 'DS9', 'VOY', 'ENT']:
@@ -239,16 +258,15 @@ def arg_embed_word(args):
             pass
         fasttext.embed_directory(show_dir, dest_dir, indices, vectors, nodes)
 
+
 def arg_train_word(args):
-    import numpy as np
     import numpy.random as random
     import torch
-    import torch.nn as nn
     import torch.optim as optim
 
     import trek_scripts.opts as opts
     import trek_scripts.word as word
-    
+
     opts.cuda = args.cuda
 
     rand = random.RandomState(args.seed)
@@ -257,38 +275,27 @@ def arg_train_word(args):
     shows = args.shows.split(',')
     shows = [show.strip() for show in shows]
     train_episodes, test_episodes = util.train_test_split(
-        rand, 
-        '.encode',
-        directory,
-        shows,
-        args.test_size)
+        rand, '.encode', directory, shows, args.test_size)
     num_layers = args.num_layers
     hidden_size = args.hidden_size
-    dropout = args.dropout
-    batch_size = args.batch_size
 
-    _, nodes = fasttext.read_embeddings_file(pathlib.Path(directory, 'words.nodes'))
-    
+    _, nodes = fasttext.read_embeddings_file(
+        pathlib.Path(directory, 'words.nodes'))
+
     tensor = torch.load(pathlib.Path(directory, 'TOS', '001.vectors'))
     height = max(len(node) for node in nodes)
-    model = word.WordRnn(len(tensor[0]),
-                         hidden_size=hidden_size,
-                         num_layers=num_layers,
-                         top_layer_size=50,
-                         hierarchy_depth=height)
+    model = word.WordRnn(
+        len(tensor[0]),
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        top_layer_size=50,
+        hierarchy_depth=height)
 
     optimizer = optim.Adam(
-        model.parameters(),
-        lr=args.learning_rate,
-        eps=args.epsilon
-    )
+        model.parameters(), lr=args.learning_rate, eps=args.epsilon)
 
     train_episodes, test_episodes = util.train_test_split(
-        rand, 
-        '.indices',
-        directory,
-        shows,
-        args.test_size)
+        rand, '.indices', directory, shows, args.test_size)
 
     # train_episodes = [pathlib.Path("TOS", "000.txt")]
     # test_episodes = [pathlib.Path("TOS", "000.txt")]
@@ -297,10 +304,9 @@ def arg_train_word(args):
 
     word_map = word.WordMap.from_directory(directory)
 
-    word.full_train(model, optimizer, rand,
-                    args.epochs, train_episodes, test_episodes,
-                    args.batch_size, args.chunk_size,
-                    word_map, args.model_directory)
+    word.full_train(model, optimizer, rand, args.epochs, train_episodes,
+                    test_episodes, args.batch_size, args.chunk_size, word_map,
+                    args.model_directory)
 
 
 def arg_train_char(args):
@@ -316,21 +322,15 @@ def arg_train_char(args):
     shows = args.shows.split(',')
     shows = [show.strip() for show in shows]
     test_episodes, train_episodes = util.train_test_split(
-        rand, 
-        '.encode',
-        args.directory,
-        shows,
-        args.test_size)
+        rand, '.encode', args.directory, shows, args.test_size)
     if args.model_name == 'top':
-        model = char.CharRnnTop(91, args.hidden_size, args.layer_size, args.num_layers)
+        model = char.CharRnnTop(91, args.hidden_size, args.layer_size,
+                                args.num_layers)
     else:
         model = char.CharRnnNoTop(91, args.hidden_size, args.num_layers)
 
     optimizer = optim.Adam(
-        model.parameters(),
-        lr=args.learning_rate,
-        eps=args.epsilon
-    )
+        model.parameters(), lr=args.learning_rate, eps=args.epsilon)
 
     if opts.cuda:
         model.cuda()
@@ -340,11 +340,12 @@ def arg_train_char(args):
     train_paths = [pathlib.Path(args.directory, ep) for ep in train_episodes]
     test_paths = [pathlib.Path(args.directory, ep) for ep in test_episodes]
 
-    char.full_train(model, optimizer, rand, args.epochs,
-                    train_paths, test_paths, args.batch_size, args.chunk_size, loss_f,
+    char.full_train(model, optimizer, rand, args.epochs, train_paths,
+                    test_paths, args.batch_size, args.chunk_size, loss_f,
                     args.model_directory)
 
     print('Done')
+
 
 def arg_fasttext_prep(args):
     import trek_scripts.fasttext as fasttext
@@ -357,24 +358,24 @@ def arg_fasttext_prep(args):
     with open(result_path, 'w') as f:
         f.write(result)
 
+
 def arg_fasttext_embed(args):
     import subprocess
 
     directory = args.directory
     word_directory = args.word_directory
-    dim = args.dim
     epochs = args.epochs
     in_filename = pathlib.Path(directory, 'trek.txt')
     out_filename = pathlib.Path(word_directory, 'words')
 
-    subprocess.run(['fasttext', 'cbow', '-input', in_filename,
-                    '-output', out_filename,
-                    '-minCount', '1',
-                    '-epoch', epochs],
+    subprocess.run([
+        'fasttext', 'cbow', '-input', in_filename, '-output', out_filename,
+        '-minCount', '1', '-epoch', epochs, '-dim', args.dim
+    ],
                    check=True)
 
+
 def arg_word_nodes(args):
-    import torch
     import numpy as np
 
     directory = args.embedding_directory
@@ -420,68 +421,60 @@ def main():
 
     encode_char_parser = subparsers.add_parser(
         'encode_char',
-        help='Encode all transcripts for character-level models.'
-    )
+        help='Encode all transcripts for character-level models.')
     encode_char_parser.add_argument('--directory', required=True)
     encode_char_parser.set_defaults(func=arg_encode_char)
 
     embed_word_parser = subparsers.add_parser(
-        'embed_word',
-        help='Encode all transcripts for word-level models.'
-    )
+        'embed_word', help='Encode all transcripts for word-level models.')
     embed_word_parser.add_argument('--directory', required=True)
     embed_word_parser.add_argument(
         '--embed_directory',
         required=True,
-        help='Directory in which to save encoded files (and in which `words.vec` has already been written.'
-    )
+        help='Directory in which to save encoded files '
+        '(and in which `words.vec` has already been written.')
     embed_word_parser.set_defaults(func=arg_embed_word)
 
     fasttext_prep_parser = subparsers.add_parser(
         'fasttext_prep',
-        help='Prepare and concatenate the shows for fasttext; save in the file trek.txt in the directory specified.'
-    )
+        help='Prepare and concatenate the shows for fasttext; '
+        'save in the file trek.txt in the directory specified.')
     fasttext_prep_parser.add_argument(
-        '--directory', required=True,
-        help='Data directory containing transcript directories'
-    )
+        '--directory',
+        required=True,
+        help='Data directory containing transcript directories')
     fasttext_prep_parser.add_argument(
         '--shows',
         default='TOS,TNG,DS9,VOY,ENT',
-        help='Comma separated list of series to train on'
-    )
+        help='Comma separated list of series to train on')
     fasttext_prep_parser.set_defaults(func=arg_fasttext_prep)
 
     fasttext_embed_parser = subparsers.add_parser(
-        'fasttext_embed',
-        help='Use fasttext to construct word embeddings.'
-    )
+        'fasttext_embed', help='Use fasttext to construct word embeddings.')
     fasttext_embed_parser.add_argument(
-        '--directory', required=True,
-        help='Data directory containing trek.txt output from fasttext_prep'
-    )
+        '--directory',
+        required=True,
+        help='Data directory containing trek.txt output from fasttext_prep')
     fasttext_embed_parser.add_argument(
-        '--word_directory', required=True,
-        help='Directory in which to save embeddings file.'
-    )
+        '--word_directory',
+        required=True,
+        help='Directory in which to save embeddings file.')
     fasttext_embed_parser.add_argument(
-        '--epochs', required=True,
-        help='How many epochs should fasttext train?'
-    )
+        '--epochs',
+        required=True,
+        help='How many epochs should fasttext train?')
     fasttext_embed_parser.add_argument(
-        '--dim', required=True,
-        help='How many dimensions should the space of word vectors be?'
-    )
+        '--dim',
+        required=True,
+        help='How many dimensions should the space of word vectors be?')
     fasttext_embed_parser.set_defaults(func=arg_fasttext_embed)
 
     word_nodes_parser = subparsers.add_parser(
-        'word_nodes',
-        help='Determine a hierarchy of words'
-    )
+        'word_nodes', help='Determine a hierarchy of words')
     word_nodes_parser.add_argument(
-        '--embedding_directory', required=True,
-        help='Directory containing `words.vec`'
-    )
+        '--embedding_directory',
+        required=True,
+        help='Directory containing `words.vec`')
     word_nodes_parser.set_defaults(func=arg_word_nodes)
 
     train_word_parser = subparsers.add_parser(
@@ -489,141 +482,140 @@ def main():
         help='Train a word level model based on embeddings constructed by fasttext.'
     )
     train_word_parser.add_argument(
-        '--embedding_directory', required=True,
-        help='Directory containing transcript directories with encoded transcripts and word embeddings'
-    )
+        '--embedding_directory',
+        required=True,
+        help='Directory containing transcript directories '
+        'with encoded transcripts and word embeddings')
     train_word_parser.add_argument(
-        '--num_layers', type=int, default=1,
-        help='How many LSTM layers to use.'
-    )
+        '--num_layers',
+        type=int,
+        default=1,
+        help='How many LSTM layers to use.')
     train_word_parser.add_argument(
         '--shows',
         default='TOS,TNG,DS9,VOY,ENT',
-        help='Comma separated list of series to train on'
-    )
+        help='Comma separated list of series to train on')
     train_word_parser.add_argument(
-        '--model_directory', required=True,
-        help='Directory in which to save models'
-    )
+        '--model_directory',
+        required=True,
+        help='Directory in which to save models')
     train_word_parser.add_argument(
-        '--hidden_size', type=int, default=256,
-        help='Size of the hidden layer in the LSTM cell'
-    )
+        '--hidden_size',
+        type=int,
+        default=256,
+        help='Size of the hidden layer in the LSTM cell')
     train_word_parser.add_argument(
-        '--dropout', type=float, default=0.0,
-        help='Dropout probability (0 for no dropout)'
-    )
+        '--dropout',
+        type=float,
+        default=0.0,
+        help='Dropout probability (0 for no dropout)')
     train_word_parser.add_argument(
-        '--cuda', action='store_true',
-    )
+        '--cuda',
+        action='store_true', )
     train_word_parser.add_argument(
-        '--test_size', type=float, required=True,
-        help='Proportion of transcripts to use for testing'
-    )
+        '--test_size',
+        type=float,
+        required=True,
+        help='Proportion of transcripts to use for testing')
     train_word_parser.add_argument(
-        '--batch_size', type=int, default=10,
-    )
+        '--batch_size',
+        type=int,
+        default=10, )
     train_word_parser.add_argument(
-        '--chunk_size', required=True, type=int,
-    )
+        '--chunk_size',
+        required=True,
+        type=int, )
     train_word_parser.add_argument(
-        '--epochs', type=int, required=True,
-        help='Number of training epochs'
-    )
+        '--epochs', type=int, required=True, help='Number of training epochs')
     train_word_parser.add_argument(
-        '--seed', type=int,
-        help='Random number seed'
-    )
+        '--seed', type=int, help='Random number seed')
     train_word_parser.add_argument(
-        '--learning_rate', type=float, default=0.001,
-        help='Learning rate for Adam optimizer'
-    )
+        '--learning_rate',
+        type=float,
+        default=0.001,
+        help='Learning rate for Adam optimizer')
     train_word_parser.add_argument(
-        '--epsilon', type=float, default=1e-4,
-        help='Epsilon parameter for Adam optimizer'
-    )
+        '--epsilon',
+        type=float,
+        default=1e-4,
+        help='Epsilon parameter for Adam optimizer')
     train_word_parser.set_defaults(func=arg_train_word)
 
     train_char_parser = subparsers.add_parser(
-        'train_char',
-        help='Train a character level model.'
-    )
+        'train_char', help='Train a character level model.')
     train_char_parser.add_argument(
-        '--directory', required=True,
-        help='Data directory containing transcript directories'
-    )
+        '--directory',
+        required=True,
+        help='Data directory containing transcript directories')
     train_char_parser.add_argument(
-        '--model_directory', required=True,
-        help='Directory in which to save models'
-    )
+        '--model_directory',
+        required=True,
+        help='Directory in which to save models')
     train_char_parser.add_argument(
-        '--model', required=False,
-        help='Saved model file to begin training with'
-    )
+        '--model',
+        required=False,
+        help='Saved model file to begin training with')
     train_char_parser.add_argument(
         '--shows',
         default='TOS,TNG,DS9,VOY,ENT',
-        help='Comma separated list of series to train on'
-    )
+        help='Comma separated list of series to train on')
     train_char_parser.add_argument(
-        '--hidden_size', type=int, default=128,
-        help='Size of the hidden layer in the GRU cell'
-    )
+        '--hidden_size',
+        type=int,
+        default=128,
+        help='Size of the hidden layer in the GRU cell')
     train_char_parser.add_argument(
-        '--num_layers', type=int, default=1,
-        help='Numer of GRU layers'
-    )
+        '--num_layers', type=int, default=1, help='Numer of GRU layers')
     train_char_parser.add_argument(
-        '--layer_size', type=int, default=128,
-        help='Size of the layer in the GRU cell'
-    )
+        '--layer_size',
+        type=int,
+        default=128,
+        help='Size of the layer in the GRU cell')
     train_char_parser.add_argument(
-        '--chunk_size', required=True, type=int,
-    )
+        '--chunk_size',
+        required=True,
+        type=int, )
     train_char_parser.add_argument(
-        '--cuda', action='store_true',
-    )
+        '--cuda',
+        action='store_true', )
     train_char_parser.add_argument(
-        '--test_size', type=float, required=True,
-        help='Proportion of transcripts to use for testing'
-    )
+        '--test_size',
+        type=float,
+        required=True,
+        help='Proportion of transcripts to use for testing')
     train_char_parser.add_argument(
-        '--batch_size', type=int, default=10,
-    )
+        '--batch_size',
+        type=int,
+        default=10, )
     train_char_parser.add_argument(
-        '--epochs', type=int, required=True,
-        help='Number of training epochs'
-    )
+        '--epochs', type=int, required=True, help='Number of training epochs')
     train_char_parser.add_argument(
-        '--seed', type=int,
-        help='Random number seed'
-    )
+        '--seed', type=int, help='Random number seed')
     train_char_parser.add_argument(
-        '--learning_rate', type=float, default=0.001,
-        help='Learning rate for Adam optimizer'
-    )
+        '--learning_rate',
+        type=float,
+        default=0.001,
+        help='Learning rate for Adam optimizer')
     train_char_parser.add_argument(
-        '--epsilon', type=float, default=1e-4,
-        help='Epsilon parameter for Adam optimizer'
-    )
+        '--epsilon',
+        type=float,
+        default=1e-4,
+        help='Epsilon parameter for Adam optimizer')
     train_char_parser.add_argument(
-        '--model_name', default='notop',
-        help='`Top` to use a model with an extra linear layer on top.'
-    )
+        '--model_name',
+        default='notop',
+        help='`Top` to use a model with an extra linear layer on top.')
     train_char_parser.set_defaults(func=arg_train_char)
 
     hallucinate_parser = subparsers.add_parser('hallucinate')
     hallucinate_parser.add_argument(
-        '--model', required=True,
-        help='Saved model file to use'
-    )
+        '--model', required=True, help='Saved model file to use')
     hallucinate_parser.add_argument(
-        '--max_len', required=True, type=int,
-    )
+        '--max_len',
+        required=True,
+        type=int, )
     hallucinate_parser.add_argument(
-        '--seed', type=int,
-        help='Random number seed'
-    )
+        '--seed', type=int, help='Random number seed')
     hallucinate_parser.set_defaults(func=arg_hallucinate)
 
     args = parser.parse_args()

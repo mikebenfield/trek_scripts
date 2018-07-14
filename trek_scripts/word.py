@@ -1,4 +1,3 @@
-
 import pathlib
 
 import torch
@@ -9,6 +8,7 @@ import numpy as np
 
 import trek_scripts.opts as opts
 from trek_scripts.util import batch_iter
+
 
 class WordMap:
     """Maps between the various representations of words.
@@ -31,7 +31,9 @@ class WordMap:
         with open(vec_file) as f:
             lines = f.readlines()[1:]
 
-        first_array = np.fromstring(lines[0].split(' ', maxsplit=1)[1], sep=' ')
+        first_array = np.fromstring(
+            lines[0].split(
+                ' ', maxsplit=1)[1], sep=' ')
         dim = len(first_array)
 
         vectors = torch.zeros([len(lines), dim])
@@ -97,7 +99,8 @@ class WordMap:
         elif isinstance(x, tuple):
             return self.tuple_to_index[x]
         else:
-            raise ValueError('x should be tuple or string; received {}'.format(x))
+            raise ValueError('x should be tuple or string; received {}'.format(
+                x))
 
     def string(self, x):
         """Return the string representation of the index or tuple x."""
@@ -127,25 +130,25 @@ class WordMap:
         elif isinstance(x, str):
             index = self.string_to_index[x]
         else:
-            raise ValueError('x should be string or int; received {}'.format(x))
+            raise ValueError('x should be string or int; received {}'.format(
+                x))
         return self.classes[index]
 
 
 class WordRnn(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers,
-                 top_layer_size, hierarchy_depth):
+    def __init__(self, input_size, hidden_size, num_layers, top_layer_size,
+                 hierarchy_depth):
         super().__init__()
 
         self.hierarchy_depth = hierarchy_depth
-        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
-                            num_layers=num_layers, batch_first=True)
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True)
         self.linear1 = nn.Linear(hidden_size + 2 * hierarchy_depth - 2, 256)
         self.linear2 = nn.Linear(256, 256)
         self.linear3 = nn.Linear(256, 1)
-        # self.linear_x = nn.Linear(hidden_size, top_layer_size)
-        # self.linear_w = nn.Linear(2 * hierarchy_depth - 2, top_layer_size)
-        # self.bilinear = nn.Bilinear(hidden_size, 2 * hierarchy_depth - 2, top_layer_size, bias=False)
-        # self.linear_final = nn.Linear(top_layer_size, 1)
 
     def forward(self, classes, x, hidden=None, full=True):
         sz = x.size()
@@ -155,7 +158,7 @@ class WordRnn(nn.Module):
         x = x.view(sz[0], sz[2])
         if full:
             results = []
-            for i in range(0, 2*self.hierarchy_depth, 2):
+            for i in range(0, 2 * self.hierarchy_depth, 2):
                 classes_ = classes.clone()
                 classes_[:, i:] = 0
                 y = torch.cat([x, classes_], dim=-1)
@@ -164,10 +167,6 @@ class WordRnn(nn.Module):
                 y = self.linear2(y)
                 y = F.relu(y)
                 y = self.linear3(y)
-                # y = self.linear_x(x) + self.bilinear(x, classes_)
-                # y = self.linear_x(x) + self.linear_w(classes_)
-                # y = F.relu(y)
-                # y = self.linear_final(y)
                 results.append(y)
             return torch.cat(results, dim=-1), hidden
         else:
@@ -177,17 +176,15 @@ class WordRnn(nn.Module):
             x = self.linear2(x)
             x = F.relu(x)
             x = self.linear3(x)
-            # x = self.linear_x(x) + self.bilinear(x, classes)
-            # # x = self.linear_x(x) + self.linear_w(classes)
-            # x = F.relu(x)
-            # x = self.linear_final(x)
             return x, hidden
+
 
 def cross_entropy_loss1(prediction, classes):
     classes = -2 * classes + 1
     signed_prediction = classes.float() * prediction
     loss = torch.log(1 + torch.exp(signed_prediction))
     return loss.mean(dim=-1)
+
 
 def cross_entropy_loss2(prediction, nodes):
     sz = list(nodes.size())
@@ -199,27 +196,12 @@ def cross_entropy_loss2(prediction, nodes):
     loss = torch.log(1 + torch.exp(sign * prediction))
     return loss.mean(dim=-1).mean(dim=-1)
 
+
 def hallucinate(model, max_len, word_map, rand):
     model.eval()
     output = ['~']
 
     hidden = None
-
-    # lst = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0]
-    # tensor = torch.tensor(lst, dtype=torch.float)
-    # nodes_tensor = torch.zeros([1, 2 * word_map.longest_tuple() - 2])
-    # for i in range(len(lst)):
-    #     inp = word_map.vector(output[-1])
-    #     inp = inp.view(1, -1)
-    #     out, _ = model(nodes_tensor, inp, hidden, False)
-    #     print('classes is ', nodes_tensor)
-    #     print('output is', out[0,0].item())
-    #     print('prob is', 1 / (1 + np.exp(-out[0,0].item())))
-    #     if i < len(lst) - 1:
-    #         nodes_tensor[0, 2*i + lst[i]] = 1
-    # return
-
-
 
     for _ in range(max_len):
         inp = word_map.vector(output[-1])
@@ -230,7 +212,7 @@ def hallucinate(model, max_len, word_map, rand):
             nodes_tensor = nodes_tensor.cuda()
         while True:
             out, hidden_ = model(nodes_tensor, inp, hidden, False)
-            val = out[0,0].item()
+            val = out[0, 0].item()
             prob = 1 / (1 + np.exp(-val))
             val = rand.uniform()
             if output[-1] == '~':
@@ -254,23 +236,23 @@ def hallucinate(model, max_len, word_map, rand):
             break
 
     return ' '.join(output)
-        
+
 
 def _format_tensors(chunk_size, nodes, vectors):
     """Put `indices` and `vectors` into a format appropriate for training.
-    
+
     `indices` is a list of 1-D long tensors, each of length `word_count`,
     representing a transcript.
-    
+
     `vectors` is a list of 2-D float tensors, of size
     `(word_count, dim)`.
 
     Returns `ret_indices`, `ret_vectors`.
-    
+
     `ret_indices` is a 2-D long tensor of shape `(transcript_len, batch_size)`
-    
+
     `ret_vectors` is a 3-D float tensor of shape `(transcript_len, batch_size, dim)`
-    
+
     Here `transcript_len` is the
     smallest integer at least as large as every `word_count` and such that
     `transcript_len % chunk_size == 1`. The excess entries are filled with
@@ -310,16 +292,17 @@ def _format_tensors(chunk_size, nodes, vectors):
 
     return ret_nodes, ret_vectors
 
+
 def train(
         model,
         optimizer,
         chunk_size,
         transcripts_nodes,
-        transcripts_vectors,
-):
+        transcripts_vectors, ):
     model.train()
 
-    nodes, vectors = _format_tensors(chunk_size, transcripts_nodes, transcripts_vectors)
+    nodes, vectors = _format_tensors(chunk_size, transcripts_nodes,
+                                     transcripts_vectors)
 
     last_hidden = None
 
@@ -331,16 +314,17 @@ def train(
     total_loss = 0
 
     for i in range(0, len(nodes) - 1, chunk_size):
-        if not last_hidden is None:
+        if last_hidden is not None:
             last_hidden = (last_hidden[0].detach(), last_hidden[1].detach())
         optimizer.zero_grad()
 
         loss = torch.zeros([1], requires_grad=True, device=device)
 
         for j in range(i, i + chunk_size):
-            output, last_hidden = model(nodes[j+1, :, :-2], vectors[j], last_hidden)
+            output, last_hidden = model(nodes[j + 1, :, :-2], vectors[j],
+                                        last_hidden)
             loss = loss.clone()
-            loss += cross_entropy_loss2(output, nodes[j+1])
+            loss += cross_entropy_loss2(output, nodes[j + 1])
 
         total_loss += loss.item()
         loss.backward()
@@ -349,6 +333,7 @@ def train(
     size = nodes.size()
     denominator = (size[0] - 1) * size[1]
     return total_loss / denominator
+
 
 def test(model, transcripts_nodes, transcripts_vectors):
     nodes, vectors = _format_tensors(1, transcripts_nodes, transcripts_vectors)
@@ -359,47 +344,55 @@ def test(model, transcripts_nodes, transcripts_vectors):
     total_loss = 0
 
     for i in range(0, len(nodes) - 1):
-        if not last_hidden is None:
+        if last_hidden is not None:
             last_hidden = (last_hidden[0].detach(), last_hidden[1].detach())
-        output, last_hidden = model(nodes[i+1, :, :-2], vectors[i], last_hidden)
-        total_loss += cross_entropy_loss2(output, nodes[i+1]).item()
+        output, last_hidden = model(nodes[i + 1, :, :-2], vectors[i],
+                                    last_hidden)
+        total_loss += cross_entropy_loss2(output, nodes[i + 1]).item()
 
     return total_loss / (len(nodes) - 1)
 
 
 def full_train(
-    model,
-    optimizer,
-    rand,
-    epochs,
-    train_episodes,
-    test_episodes,
-    batch_size,
-    chunk_size,
-    word_map,
-    model_directory,
-):
+        model,
+        optimizer,
+        rand,
+        epochs,
+        train_episodes,
+        test_episodes,
+        batch_size,
+        chunk_size,
+        word_map,
+        model_directory, ):
     for epoch in range(epochs):
         print('Beginning epoch {}'.format(epoch))
 
         total_train_loss = 0
-        for i, train_batch in enumerate(batch_iter(rand, batch_size, train_episodes)):
-            as_nodes = [torch.load(ep.with_suffix('.nodes')) for ep in train_batch]
-            as_vectors = [torch.load(ep.with_suffix('.vectors')) for ep in train_batch]
+        for i, train_batch in enumerate(
+                batch_iter(rand, batch_size, train_episodes)):
+            as_nodes = [
+                torch.load(ep.with_suffix('.nodes')) for ep in train_batch
+            ]
+            as_vectors = [
+                torch.load(ep.with_suffix('.vectors')) for ep in train_batch
+            ]
 
             if opts.cuda:
                 as_nodes = [tensor.cuda() for tensor in as_nodes]
                 as_vectors = [tensor.cuda() for tensor in as_vectors]
 
-            loss = train(model, optimizer,
-                         chunk_size, as_nodes, as_vectors)
+            loss = train(model, optimizer, chunk_size, as_nodes, as_vectors)
             print('Batch {}, loss {}'.format(i, loss))
             total_train_loss += len(as_nodes) * loss
 
         total_test_loss = 0
         for test_batch in batch_iter(rand, batch_size, test_episodes):
-            as_nodes = [torch.load(ep.with_suffix('.nodes')) for ep in test_batch]
-            as_vectors = [torch.load(ep.with_suffix('.vectors')) for ep in test_batch]
+            as_nodes = [
+                torch.load(ep.with_suffix('.nodes')) for ep in test_batch
+            ]
+            as_vectors = [
+                torch.load(ep.with_suffix('.vectors')) for ep in test_batch
+            ]
             if opts.cuda:
                 as_nodes = [tensor.cuda() for tensor in as_nodes]
                 as_vectors = [tensor.cuda() for tensor in as_vectors]
@@ -409,8 +402,10 @@ def full_train(
         average_test_loss = total_test_loss / len(test_episodes)
         average_train_loss = total_train_loss / len(train_episodes)
 
-        print('mean training loss for epoch {}: {}'.format(epoch, average_train_loss))
-        print('mean testing loss for epoch {}: {}'.format(epoch, average_test_loss))
+        print('mean training loss for epoch {}: {}'.format(epoch,
+                                                           average_train_loss))
+        print('mean testing loss for epoch {}: {}'.format(epoch,
+                                                          average_test_loss))
 
         text = hallucinate(model, 100, word_map, rand)
         print(text)
