@@ -289,7 +289,7 @@ def full_train(
     sample hallucinated script will be printed to the screen.
     """
     for epoch in range(epochs):
-        print('Beginning epoch{}'.format(epoch))
+        print('Beginning epoch {}'.format(epoch))
 
         total_train_loss = 0
         for i, train_batch in enumerate(

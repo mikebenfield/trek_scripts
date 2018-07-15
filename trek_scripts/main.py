@@ -297,10 +297,12 @@ def arg_train_word(args):
     train_episodes, test_episodes = util.train_test_split(
         rand, '.indices', directory, shows, args.test_size)
 
-    # train_episodes = [pathlib.Path("TOS", "000.txt")]
-    # test_episodes = [pathlib.Path("TOS", "000.txt")]
     train_episodes = [pathlib.Path(directory, ep) for ep in train_episodes]
     test_episodes = [pathlib.Path(directory, ep) for ep in test_episodes]
+
+    if args.fake:
+        train_episodes = [train_episodes[0]]
+        test_episodes = [test_episodes[0]]
 
     word_map = word.WordMap.from_directory(directory)
 
@@ -340,6 +342,10 @@ def arg_train_char(args):
 
     train_paths = [pathlib.Path(args.directory, ep) for ep in train_episodes]
     test_paths = [pathlib.Path(args.directory, ep) for ep in test_episodes]
+
+    if args.fake:
+        train_paths = [train_paths[0]]
+        test_paths = [test_paths[0]]
 
     char.full_train(model, optimizer, rand, args.epochs, train_paths,
                     test_paths, args.batch_size, args.chunk_size, loss_f,
@@ -483,6 +489,12 @@ def main():
         help='Train a word level model based on embeddings constructed by fasttext.'
     )
     train_word_parser.add_argument(
+        '--fake',
+        action='store_true',
+        help='Rather than do a legitimate training process, '
+        'only train and test on one script each '
+        '(This exists for quick testing purposes)')
+    train_word_parser.add_argument(
         '--embedding_directory',
         required=True,
         help='Directory containing transcript directories '
@@ -545,6 +557,12 @@ def main():
     train_char_parser = subparsers.add_parser(
         'train_char', help='Train a character level model.')
     train_char_parser.add_argument(
+        '--fake',
+        action='store_true',
+        help='Rather than do a legitimate training process, '
+        'only train and test on one script each '
+        '(This exists for quick testing purposes)')
+    train_char_parser.add_argument(
         '--directory',
         required=True,
         help='Data directory containing transcript directories')
@@ -560,7 +578,7 @@ def main():
         '--shows',
         default='TOS,TNG,DS9,VOY,ENT',
         help='Comma separated list of series to train on')
-    train_word_parser.add_argument(
+    train_char_parser.add_argument(
         '--dropout',
         type=float,
         default=0.0,
