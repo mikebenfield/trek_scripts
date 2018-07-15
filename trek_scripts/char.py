@@ -245,25 +245,23 @@ def hallucinate(model, max_len, rand):
     characters."""
     import numpy as np
 
-    import trek_scripts.strings as strings
-
     model.eval()
     output = []
 
-    last_code = strings.char_to_code('~')
+    last_code = char_to_code('~')
 
     hidden = None
 
     for _ in range(max_len):
-        inp = torch.zeros([1, strings.N_CODEPOINTS])
+        inp = torch.zeros([1, N_CODEPOINTS])
         inp[0, last_code] = 1
         if opts.cuda:
             inp = inp.cuda()
         out, hidden = model(inp, hidden)
         nparray = out.detach().cpu().numpy()
         nparray = np.exp(nparray)
-        last_code = rand.choice(strings.N_CODEPOINTS, p=nparray[0])
-        char = strings.code_to_char(last_code)
+        last_code = rand.choice(N_CODEPOINTS, p=nparray[0])
+        char = code_to_char(last_code)
         if char == '@':
             break
         output.append(char)
