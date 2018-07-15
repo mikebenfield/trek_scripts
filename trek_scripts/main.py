@@ -628,7 +628,7 @@ def main():
     train_char_parser.add_argument(
         '--model_name',
         default='notop',
-        help='`Top` to use a model with an extra linear layer on top.')
+        help='`top` to use a model with an extra linear layer on top.')
     train_char_parser.set_defaults(func=arg_train_char)
 
     hallucinate_parser = subparsers.add_parser('hallucinate')
