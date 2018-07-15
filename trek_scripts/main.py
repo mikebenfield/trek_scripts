@@ -323,7 +323,7 @@ def arg_train_char(args):
 
     shows = args.shows.split(',')
     shows = [show.strip() for show in shows]
-    test_episodes, train_episodes = util.train_test_split(
+    train_episodes, test_episodes = util.train_test_split(
         rand, '.encode', args.directory, shows, args.test_size)
     if args.model_name == 'top':
         model = char.CharRnnTop(91, args.hidden_size, args.layer_size,
