@@ -175,7 +175,8 @@ def _format_tensors(chunk_size, tensors):
         tensor = tensors[i]
         length = len(tensor)
         encoded[0:length, i] = tensor
-        encoded[length:, i] = char_to_code('@')
+        if len(encoded) < length:
+            encoded[length:, i] = char_to_code('@')
         onehot[indices, i, encoded[:, i]] = 1
 
     return onehot, encoded
