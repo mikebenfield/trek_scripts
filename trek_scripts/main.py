@@ -227,7 +227,7 @@ def arg_hallucinate(args):
     import numpy.random as random
     import trek_scripts.char as char
     rand = random.RandomState(args.seed)
-    model = torch.load(args.model)
+    model = torch.load(args.model).cpu()
     s = char.hallucinate(model, args.max_len, rand)
     print(s)
 
