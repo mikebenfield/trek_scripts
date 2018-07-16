@@ -227,16 +227,7 @@ def arg_hallucinate(args):
     import numpy.random as random
     import trek_scripts.char as char
     rand = random.RandomState(args.seed)
-    dict_ = torch.load(args.model)
-    hidden_size = dict_['hidden_size']
-    layer_size = dict_['layer_size']
-    num_layers = dict_['num_layers']
-    model = char.CharRnnTop(
-        91,
-        hidden_size=hidden_size,
-        layer_size=layer_size,
-        num_layers=num_layers)
-    model.load_state_dict(dict_['model'])
+    model = torch.load(args.model)
     s = char.hallucinate(model, args.max_len, rand)
     print(s)
 
