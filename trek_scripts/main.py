@@ -302,7 +302,23 @@ def arg_train_word(args):
                     args.model_directory)
 
 
+def arg_train_char_cont(args):
+    import torch
+    model = torch.load(args.model)
+    arg_train_char_full(model, args)
+
+
 def arg_train_char(args):
+    if args.model_name == 'top':
+        model = char.CharRnnTop(91, args.hidden_size, args.layer_size,
+                                args.num_layers, args.dropout)
+    else:
+        model = char.CharRnnNoTop(91, args.hidden_size, args.num_layers,
+                                  args.dropout)
+    arg_train_char_full(model, args)
+
+
+def arg_train_char_full(model, args):
     from torch import optim
     from torch import nn
 
@@ -316,12 +332,6 @@ def arg_train_char(args):
     shows = [show.strip() for show in shows]
     train_episodes, test_episodes = util.train_test_split(
         rand, '.encode', args.directory, shows, args.test_size)
-    if args.model_name == 'top':
-        model = char.CharRnnTop(91, args.hidden_size, args.layer_size,
-                                args.num_layers, args.dropout)
-    else:
-        model = char.CharRnnNoTop(91, args.hidden_size, args.num_layers,
-                                  args.dropout)
 
     optimizer = optim.Adam(
         model.parameters(), lr=args.learning_rate, eps=args.epsilon)
@@ -562,10 +572,6 @@ def main():
         required=True,
         help='Directory in which to save models')
     train_char_parser.add_argument(
-        '--model',
-        required=False,
-        help='Saved model file to begin training with')
-    train_char_parser.add_argument(
         '--shows',
         default='TOS,TNG,DS9,VOY,ENT',
         help='Comma separated list of series to train on')
@@ -621,6 +627,61 @@ def main():
         default='notop',
         help='`top` to use a model with an extra linear layer on top.')
     train_char_parser.set_defaults(func=arg_train_char)
+
+    train_char_cont_parser = subparsers.add_parser(
+        'train_char_cont',
+        help='Continue training a saved character level model.')
+    train_char_cont_parser.add_argument(
+        '--fake',
+        action='store_true',
+        help='Rather than do a legitimate training process, '
+        'only train and test on one script each '
+        '(This exists for quick testing purposes)')
+    train_char_cont_parser.add_argument(
+        '--directory',
+        required=True,
+        help='Data directory containing transcript directories')
+    train_char_cont_parser.add_argument(
+        '--model_directory',
+        required=True,
+        help='Directory in which to save models')
+    train_char_cont_parser.add_argument(
+        '--shows',
+        default='TOS,TNG,DS9,VOY,ENT',
+        help='Comma separated list of series to train on')
+    train_char_cont_parser.add_argument(
+        '--chunk_size',
+        required=True,
+        type=int, )
+    train_char_cont_parser.add_argument(
+        '--cuda',
+        action='store_true', )
+    train_char_cont_parser.add_argument(
+        '--test_size',
+        type=float,
+        required=True,
+        help='Proportion of transcripts to use for testing')
+    train_char_cont_parser.add_argument(
+        '--batch_size',
+        type=int,
+        default=10, )
+    train_char_cont_parser.add_argument(
+        '--epochs', type=int, required=True, help='Number of training epochs')
+    train_char_cont_parser.add_argument(
+        '--seed', type=int, help='Random number seed')
+    train_char_cont_parser.add_argument(
+        '--learning_rate',
+        type=float,
+        default=0.001,
+        help='Learning rate for Adam optimizer')
+    train_char_cont_parser.add_argument(
+        '--epsilon',
+        type=float,
+        default=1e-4,
+        help='Epsilon parameter for Adam optimizer')
+    train_char_cont_parser.add_argument(
+        '--model', required=True, help='Saved model file to use')
+    train_char_cont_parser.set_defaults(func=arg_train_char_cont)
 
     hallucinate_parser = subparsers.add_parser('hallucinate')
     hallucinate_parser.add_argument(
