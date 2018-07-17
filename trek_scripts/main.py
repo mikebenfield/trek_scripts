@@ -591,7 +591,7 @@ def main():
         '--layer_size',
         type=int,
         default=128,
-        help='Size of the layer in the GRU cell')
+        help='Size of the top layer cell')
     train_char_parser.add_argument(
         '--chunk_size',
         required=True,
