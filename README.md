@@ -1,4 +1,4 @@
-# Trek Scripts
+  # Trek Scripts
 
 Use character- and word-level models to generate artificial Star Trek scripts.
 
@@ -81,11 +81,3 @@ Trek Scripts uses algorithms from a number of papers, notably:
 
 3. Enriching Word Vectors with Subword Information, Piotr Bojanowski, Edouard Grave, Armand Joulin and Tomas Mikolov, 2016
 
-## License
-
-Redwood is Copyright 2018, Michael Benfield.
-
-You may modify and/or distribute Redwood under the terms of either
- * Apache License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0
- * MIT license http://opensource.org/licenses/MIT
-at your option.
